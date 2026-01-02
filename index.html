@@ -5,45 +5,32 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Wine Tasting</title>
 
-    <!-- Tailwind (for your existing className styling) -->
+    <!-- Tailwind -->
     <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+      /* Small safety so you always see something even if Tailwind fails */
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    </style>
   </head>
   <body class="bg-white">
     <div id="root"></div>
 
-    <!-- React + Babel (so you can paste JSX directly in index.html) -->
+    <!-- React + Babel -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <!-- Firebase v8 (global "firebase" object, works in plain HTML easily) -->
-    <!-- Using cdnjs for v8.10.1 (namespaced API) -->
+    <!-- Firebase v8 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/8.10.1/firebase-app.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/8.10.1/firebase-firestore.min.js"></script>
 
     <script type="text/babel">
-      /**
-       * ✅ CENTRALIZED + PERSISTENT VOTES (works across phones, survives reload)
-       *
-       * What you MUST do once:
-       * 1) Create a Firebase project
-       * 2) Enable Firestore Database
-       * 3) Replace firebaseConfig below with your config (from Firebase Console -> Project settings -> Your apps -> Web app)
-       * 4) Firestore rules (simple demo rules):
-       *    - For a private event, you can temporarily allow read/write:
-       *      rules_version = '2';
-       *      service cloud.firestore {
-       *        match /databases/{database}/documents {
-       *          match /{document=**} {
-       *            allow read, write: if true;
-       *          }
-       *        }
-       *      }
-       *    IMPORTANT: This is NOT secure for a public website. For real security, you need Auth + proper rules.
-       */
-
+      // -----------------------------
+      // 1) PASTE YOUR FIREBASE CONFIG HERE
+      // -----------------------------
       const firebaseConfig = {
-        // TODO: paste your Firebase config here:
+        // ✅ REQUIRED for centralised voting:
         // apiKey: "....",
         // authDomain: "....",
         // projectId: "....",
@@ -52,25 +39,115 @@
         // appId: "...."
       };
 
-      // Init Firebase once
-      if (!firebase.apps.length) {
-        firebase.initializeApp(firebaseConfig);
-      }
-      const db = firebase.firestore();
-
       const ADMIN_PASSWORD = "winetasting2025";
 
+      // -----------------------------
+      // 2) SMALL ERROR OVERLAY (so it never goes blank)
+      // -----------------------------
+      function FatalScreen({ title, message, details }) {
+        return (
+          <div className="min-h-screen bg-gradient-to-br from-red-50 via-white to-blue-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-lg shadow-xl p-6 max-w-lg w-full">
+              <h1 className="text-2xl font-bold text-gray-800 mb-2">{title}</h1>
+              <p className="text-gray-700 mb-4">{message}</p>
+              {details ? (
+                <pre className="text-xs bg-gray-50 border border-gray-200 rounded p-3 overflow-auto whitespace-pre-wrap">
+                  {details}
+                </pre>
+              ) : null}
+              <p className="mt-4 text-sm text-gray-600">
+                If you’re using Firebase: make sure you pasted the config and enabled Firestore.
+              </p>
+            </div>
+          </div>
+        );
+      }
+
+      // -----------------------------
+      // 3) SAFE FIREBASE INIT (won’t crash)
+      // -----------------------------
+      function hasFirebaseConfig(cfg) {
+        return !!(cfg && cfg.apiKey && cfg.projectId && cfg.appId);
+      }
+
+      let db = null;
+      let firebaseReady = false;
+      let firebaseInitError = "";
+
+      try {
+        if (window.firebase && hasFirebaseConfig(firebaseConfig)) {
+          if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+          db = firebase.firestore();
+          firebaseReady = true;
+        } else {
+          firebaseReady = false;
+        }
+      } catch (e) {
+        firebaseReady = false;
+        firebaseInitError = (e && e.message) ? e.message : String(e);
+      }
+
+      // -----------------------------
+      // 4) LOCAL FALLBACK STORAGE (so app still works if Firebase missing)
+      // -----------------------------
+      const LS_VOTES_KEY = "wine_votes_v1";
+      const LS_ADMIN_KEY = "wine_admin_settings_v1";
+
+      function loadLocalVotes() {
+        try {
+          return JSON.parse(localStorage.getItem(LS_VOTES_KEY) || "[]");
+        } catch {
+          return [];
+        }
+      }
+
+      function saveLocalVotes(votes) {
+        try {
+          localStorage.setItem(LS_VOTES_KEY, JSON.stringify(votes));
+        } catch {}
+      }
+
+      function loadLocalAdminSettings() {
+        try {
+          return JSON.parse(localStorage.getItem(LS_ADMIN_KEY) || "{}");
+        } catch {
+          return {};
+        }
+      }
+
+      function saveLocalAdminSettings(obj) {
+        try {
+          localStorage.setItem(LS_ADMIN_KEY, JSON.stringify(obj));
+        } catch {}
+      }
+
+      // -----------------------------
+      // 5) MAIN APP
+      // -----------------------------
       function WineTastingForm() {
+        // If Firebase scripts failed completely, show a clear message
+        if (!window.React || !window.ReactDOM) {
+          return (
+            <FatalScreen
+              title="React failed to load"
+              message="The React scripts did not load. This is usually a network/ad-blocker issue."
+              details="Try a different network, or disable content blockers for this page."
+            />
+          );
+        }
+
+        // If Firebase config is missing, the app will run in LOCAL mode (not centralised)
+        const usingCentral = firebaseReady && !!db;
+
         const [firstName, setFirstName] = React.useState("");
         const [lastName, setLastName] = React.useState("");
         const [isLoggedIn, setIsLoggedIn] = React.useState(false);
 
         const [scores, setScores] = React.useState({});
-        const [currentTab, setCurrentTab] = React.useState("score"); // 'score' or 'review'
+        const [currentTab, setCurrentTab] = React.useState("score");
         const [wineNumber, setWineNumber] = React.useState("");
         const [currentScore, setCurrentScore] = React.useState("");
 
-        // CENTRALIZED state (from Firestore)
         const [allVotes, setAllVotes] = React.useState([]);
         const [excludedUsers, setExcludedUsers] = React.useState(new Set());
 
@@ -79,8 +156,15 @@
 
         const userName = `${firstName.trim()} ${lastName.trim()}`.trim();
 
-        // Live listener for ALL votes (centralized)
+        const normalizeDocId = (name) => name.replaceAll("/", "_").trim().slice(0, 200);
+
+        // CENTRAL: live listener
         React.useEffect(() => {
+          if (!usingCentral) {
+            setAllVotes(loadLocalVotes());
+            return;
+          }
+
           const unsub = db
             .collection("votes")
             .orderBy("updatedAt", "desc")
@@ -90,67 +174,82 @@
                 snap.forEach((doc) => votes.push({ id: doc.id, ...doc.data() }));
                 setAllVotes(votes);
               },
-              (err) => {
-                console.error("Firestore votes listener error:", err);
-              }
+              (err) => console.error("Firestore votes listener error:", err)
             );
-          return () => unsub();
-        }, []);
 
-        // Live listener for admin excluded users (centralized)
+          return () => unsub();
+        }, [usingCentral]);
+
+        // CENTRAL admin settings (excluded users)
         React.useEffect(() => {
+          if (!usingCentral) {
+            const data = loadLocalAdminSettings();
+            const arr = Array.isArray(data.excludedUsers) ? data.excludedUsers : [];
+            setExcludedUsers(new Set(arr));
+            return;
+          }
+
           const unsub = db.collection("admin").doc("settings").onSnapshot(
             (doc) => {
               const data = doc.exists ? doc.data() : {};
               const arr = Array.isArray(data.excludedUsers) ? data.excludedUsers : [];
               setExcludedUsers(new Set(arr));
             },
-            (err) => {
-              console.error("Firestore admin/settings listener error:", err);
-            }
+            (err) => console.error("Firestore admin/settings listener error:", err)
           );
-          return () => unsub();
-        }, []);
 
-        const normalizeDocId = (name) => {
-          // Firestore doc IDs can be most strings, but let's keep it clean
-          // Replace "/" because it breaks paths; trim; limit length
-          return name.replaceAll("/", "_").trim().slice(0, 200);
-        };
+          return () => unsub();
+        }, [usingCentral]);
 
         const handleLogin = async () => {
           if (!firstName.trim() || !lastName.trim()) return;
 
+          // Load existing user vote if exists
           try {
-            const docId = normalizeDocId(userName);
-            const doc = await db.collection("votes").doc(docId).get();
-            if (doc.exists) {
-              const data = doc.data();
-              if (data && data.scores && typeof data.scores === "object") {
-                setScores(data.scores);
+            if (usingCentral) {
+              const docId = normalizeDocId(userName);
+              const doc = await db.collection("votes").doc(docId).get();
+              if (doc.exists) {
+                const data = doc.data();
+                if (data && data.scores && typeof data.scores === "object") setScores(data.scores);
               }
+            } else {
+              const existing = loadLocalVotes().find((v) => v && v.name === userName);
+              if (existing && existing.scores) setScores(existing.scores);
             }
-            setIsLoggedIn(true);
           } catch (e) {
             console.error("Login load error:", e);
-            setIsLoggedIn(true); // still allow using app even if load fails
           }
+
+          setIsLoggedIn(true);
         };
 
         const handleLogout = async () => {
-          // Save centralized vote before logging out
+          // Save vote
           try {
             if (Object.keys(scores).length > 0 && userName) {
-              const docId = normalizeDocId(userName);
-              await db.collection("votes").doc(docId).set(
-                {
-                  name: userName,
-                  scores: { ...scores },
-                  updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                  timestampISO: new Date().toISOString(),
-                },
-                { merge: true }
-              );
+              const userVote = {
+                name: userName,
+                scores: { ...scores },
+                timestampISO: new Date().toISOString(),
+              };
+
+              if (usingCentral) {
+                const docId = normalizeDocId(userName);
+                await db.collection("votes").doc(docId).set(
+                  {
+                    ...userVote,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                  },
+                  { merge: true }
+                );
+              } else {
+                const prev = loadLocalVotes();
+                const filtered = prev.filter((v) => v && v.name !== userName);
+                const next = [{ ...userVote, updatedAtLocal: Date.now() }, ...filtered];
+                saveLocalVotes(next);
+                setAllVotes(next);
+              }
             }
           } catch (e) {
             console.error("Logout save error:", e);
@@ -250,14 +349,18 @@
             if (next.has(name)) next.delete(name);
             else next.add(name);
 
-            // Save centrally so admin sees same exclusions on reload/device
-            await db.collection("admin").doc("settings").set(
-              {
-                excludedUsers: Array.from(next),
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-              },
-              { merge: true }
-            );
+            if (usingCentral) {
+              await db.collection("admin").doc("settings").set(
+                {
+                  excludedUsers: Array.from(next),
+                  updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                },
+                { merge: true }
+              );
+            } else {
+              saveLocalAdminSettings({ excludedUsers: Array.from(next), updatedAtLocal: Date.now() });
+              setExcludedUsers(next);
+            }
           } catch (e) {
             console.error("Toggle exclusion error:", e);
           }
@@ -270,26 +373,40 @@
         const isItalian = wineNum > 0 && wineNum % 2 === 0;
         const isFrench = wineNum > 0 && wineNum % 2 === 1;
 
-        // ------------------------
+        // If Firebase init actually threw, show it clearly
+        if (!usingCentral && firebaseInitError) {
+          return (
+            <FatalScreen
+              title="Firebase initialization error"
+              message="Your page would have been blank before — now you can see why."
+              details={firebaseInitError}
+            />
+          );
+        }
+
         // ADMIN PANEL
-        // ------------------------
         if (showAdmin) {
           if (adminPassword !== ADMIN_PASSWORD) {
             return (
               <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-4">
                 <div className="bg-white rounded-lg shadow-xl p-8 max-w-md w-full">
-                  <h1 className="text-2xl font-bold text-gray-800 mb-6 text-center">Admin Access</h1>
+                  <h1 className="text-2xl font-bold text-gray-800 mb-2 text-center">Admin Access</h1>
+                  <p className="text-center text-sm text-gray-600 mb-6">
+                    Mode: <span className="font-semibold">{usingCentral ? "Centralised (all phones)" : "Local (this device only)"}</span>
+                  </p>
+
+                  {!usingCentral && (
+                    <div className="mb-5 p-3 rounded border border-amber-300 bg-amber-50 text-amber-800 text-sm">
+                      You are in LOCAL mode because Firebase config is not set. Paste your Firebase config in the file to make votes centralised.
+                    </div>
+                  )}
+
                   <input
                     type="password"
                     value={adminPassword}
                     onChange={(e) => setAdminPassword(e.target.value)}
                     placeholder="Enter admin password"
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent mb-4"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        // nothing else needed; UI will re-render automatically when password matches
-                      }
-                    }}
                   />
                   <button
                     onClick={() => setShowAdmin(false)}
@@ -309,7 +426,12 @@
               <div className="max-w-6xl mx-auto">
                 <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
                   <div className="flex items-center justify-between">
-                    <h1 className="text-2xl font-bold text-gray-800">Admin Dashboard</h1>
+                    <div>
+                      <h1 className="text-2xl font-bold text-gray-800">Admin Dashboard</h1>
+                      <p className="text-sm text-gray-600 mt-1">
+                        Mode: <span className="font-semibold">{usingCentral ? "Centralised (all phones)" : "Local (this device only)"}</span>
+                      </p>
+                    </div>
                     <button
                       onClick={() => {
                         setShowAdmin(false);
@@ -320,12 +442,14 @@
                       Exit Admin
                     </button>
                   </div>
-                  <p className="mt-2 text-sm text-gray-600">
-                    Centralized votes: updates live from everyone’s phones (and stay after reload).
-                  </p>
+
+                  {!usingCentral && (
+                    <div className="mt-4 p-3 rounded border border-amber-300 bg-amber-50 text-amber-800 text-sm">
+                      You are in LOCAL mode. To see votes from other phones, paste Firebase config (and enable Firestore).
+                    </div>
+                  )}
                 </div>
 
-                {/* Global Results */}
                 <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
                   <h2 className="text-xl font-bold text-gray-800 mb-4">Overall Results (All Votes)</h2>
                   <div className="grid md:grid-cols-2 gap-4 mb-4">
@@ -353,7 +477,6 @@
                   )}
                 </div>
 
-                {/* Individual Participants */}
                 <div className="bg-white rounded-lg shadow-lg p-6">
                   <h2 className="text-xl font-bold text-gray-800 mb-4">
                     Individual Participants ({includedCount} included / {allVotes.length} total)
@@ -403,7 +526,6 @@
                                   className={`w-6 h-6 rounded border-2 flex items-center justify-center transition ${
                                     isExcluded ? "bg-gray-300 border-gray-400" : "bg-green-500 border-green-600"
                                   }`}
-                                  title={isExcluded ? "Excluded from global results" : "Included in global results"}
                                 >
                                   {!isExcluded && <span className="text-white text-sm">✓</span>}
                                 </button>
@@ -465,9 +587,7 @@
           );
         }
 
-        // ------------------------
         // LOGIN SCREEN
-        // ------------------------
         if (!isLoggedIn) {
           return (
             <div className="min-h-screen bg-gradient-to-br from-red-50 via-white to-blue-50 flex items-center justify-center p-4">
@@ -477,7 +597,17 @@
                   <h1 className="text-3xl font-bold text-gray-800">Wine Tasting</h1>
                   <span className="text-4xl">🍷</span>
                 </div>
-                <p className="text-center text-gray-600 mb-8">Italy 🇮🇹 vs France 🇫🇷</p>
+
+                <p className="text-center text-gray-600 mb-4">Italy 🇮🇹 vs France 🇫🇷</p>
+
+                <div className={`mb-6 p-3 rounded border text-sm ${usingCentral ? "border-green-200 bg-green-50 text-green-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
+                  Mode: <span className="font-semibold">{usingCentral ? "Centralised (all phones)" : "Local (this device only)"}</span>
+                  {!usingCentral && (
+                    <div className="mt-1">
+                      Paste Firebase config to make admin see everyone’s votes.
+                    </div>
+                  )}
+                </div>
 
                 <div className="space-y-4 mb-6">
                   <div>
@@ -492,7 +622,6 @@
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                     />
                   </div>
-
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Last Name <span className="text-red-500">*</span>
@@ -525,22 +654,15 @@
                 >
                   Admin Access
                 </button>
-
-                <p className="mt-6 text-xs text-gray-500 text-center">
-                  Votes are centralized and saved online (everyone’s phones + reload-safe).
-                </p>
               </div>
             </div>
           );
         }
 
-        // ------------------------
-        // MAIN APP (AFTER LOGIN)
-        // ------------------------
+        // MAIN APP
         return (
           <div className="min-h-screen bg-gradient-to-br from-red-50 via-white to-blue-50 p-4">
             <div className="max-w-4xl mx-auto">
-              {/* Header */}
               <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
@@ -560,13 +682,17 @@
                   </button>
                 </div>
 
-                <div className="flex items-center gap-2 p-3 bg-purple-50 rounded-lg border border-purple-200">
-                  <span className="text-purple-600">👤</span>
-                  <span className="font-semibold text-gray-800">{userName}</span>
+                <div className="flex items-center justify-between gap-3 p-3 bg-purple-50 rounded-lg border border-purple-200">
+                  <div className="flex items-center gap-2">
+                    <span className="text-purple-600">👤</span>
+                    <span className="font-semibold text-gray-800">{userName}</span>
+                  </div>
+                  <span className={`text-xs px-2 py-1 rounded border ${usingCentral ? "border-green-200 bg-green-50 text-green-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
+                    {usingCentral ? "Centralised" : "Local"}
+                  </span>
                 </div>
               </div>
 
-              {/* Tabs */}
               <div className="bg-white rounded-lg shadow-lg mb-6">
                 <div className="flex border-b">
                   <button
@@ -591,7 +717,6 @@
                   </button>
                 </div>
 
-                {/* Score Tab */}
                 {currentTab === "score" && (
                   <div className="p-6">
                     <h2 className="text-xl font-bold text-gray-800 mb-6">Score a Wine</h2>
@@ -666,13 +791,12 @@
                       </button>
 
                       <p className="text-xs text-gray-500 text-center">
-                        Your scores are saved to the centralized database when you log out.
+                        Your vote is saved when you log out. (You can also just keep the tab open.)
                       </p>
                     </div>
                   </div>
                 )}
 
-                {/* Review Tab */}
                 {currentTab === "review" && (
                   <div className="p-6">
                     <h2 className="text-xl font-bold text-gray-800 mb-4">My Scores</h2>
@@ -736,7 +860,6 @@
                       </div>
                     )}
 
-                    {/* Results Summary */}
                     {Object.keys(scores).length > 0 && (
                       <div className="mt-6 pt-6 border-t">
                         <div className="flex items-center gap-2 mb-4">
@@ -768,10 +891,6 @@
                             </p>
                           </div>
                         )}
-
-                        <p className="mt-4 text-xs text-gray-500 text-center">
-                          Your vote is written to the centralized database when you log out.
-                        </p>
                       </div>
                     )}
                   </div>
@@ -782,7 +901,18 @@
         );
       }
 
-      ReactDOM.createRoot(document.getElementById("root")).render(<WineTastingForm />);
+      // Mount safely (and show clear error if anything unexpected happens)
+      try {
+        ReactDOM.createRoot(document.getElementById("root")).render(<WineTastingForm />);
+      } catch (e) {
+        const msg = (e && e.message) ? e.message : String(e);
+        document.getElementById("root").innerHTML =
+          '<div style="padding:16px;font-family:system-ui;">' +
+          '<h2 style="font-size:20px;font-weight:700;">App crashed before rendering</h2>' +
+          '<pre style="white-space:pre-wrap;background:#f7f7f7;border:1px solid #ddd;padding:12px;border-radius:8px;">' +
+          msg +
+          "</pre></div>";
+      }
     </script>
   </body>
 </html>
