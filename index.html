@@ -5,150 +5,155 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Wine Tasting</title>
 
-    <!-- Tailwind (CDN) -->
+    <!-- Tailwind (for your existing className styling) -->
     <script src="https://cdn.tailwindcss.com"></script>
-
-    <!-- React (CDN) -->
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-
-    <!-- Babel (so we can write JSX directly in this HTML file) -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   </head>
-
-  <body class="min-h-screen">
+  <body class="bg-white">
     <div id="root"></div>
 
+    <!-- React + Babel (so you can paste JSX directly in index.html) -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Firebase v8 (global "firebase" object, works in plain HTML easily) -->
+    <!-- Using cdnjs for v8.10.1 (namespaced API) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/8.10.1/firebase-app.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/8.10.1/firebase-firestore.min.js"></script>
+
     <script type="text/babel">
-      const { useEffect, useMemo, useState } = React;
+      /**
+       * ✅ CENTRALIZED + PERSISTENT VOTES (works across phones, survives reload)
+       *
+       * What you MUST do once:
+       * 1) Create a Firebase project
+       * 2) Enable Firestore Database
+       * 3) Replace firebaseConfig below with your config (from Firebase Console -> Project settings -> Your apps -> Web app)
+       * 4) Firestore rules (simple demo rules):
+       *    - For a private event, you can temporarily allow read/write:
+       *      rules_version = '2';
+       *      service cloud.firestore {
+       *        match /databases/{database}/documents {
+       *          match /{document=**} {
+       *            allow read, write: if true;
+       *          }
+       *        }
+       *      }
+       *    IMPORTANT: This is NOT secure for a public website. For real security, you need Auth + proper rules.
+       */
 
-      // --- Simple icon replacements (lucide-react can't be imported in plain HTML) ---
-      const WineIcon = ({ className = "", size = 32 }) => (
-        <span className={className} style={{ fontSize: size, lineHeight: 1 }}>
-          🍷
-        </span>
-      );
+      const firebaseConfig = {
+        // TODO: paste your Firebase config here:
+        // apiKey: "....",
+        // authDomain: "....",
+        // projectId: "....",
+        // storageBucket: "....",
+        // messagingSenderId: "....",
+        // appId: "...."
+      };
 
-      const UserIcon = ({ className = "", size = 20 }) => (
-        <svg
-          className={className}
-          width={size}
-          height={size}
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M20 21a8 8 0 0 0-16 0" />
-          <circle cx="12" cy="7" r="4" />
-        </svg>
-      );
+      // Init Firebase once
+      if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+      }
+      const db = firebase.firestore();
 
-      const LogoutIcon = ({ className = "", size = 20 }) => (
-        <svg
-          className={className}
-          width={size}
-          height={size}
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-          <polyline points="16 17 21 12 16 7" />
-          <line x1="21" y1="12" x2="9" y2="12" />
-        </svg>
-      );
-
-      const BarChartIcon = ({ className = "", size = 24 }) => (
-        <svg
-          className={className}
-          width={size}
-          height={size}
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <line x1="6" y1="20" x2="6" y2="16" />
-          <line x1="12" y1="20" x2="12" y2="10" />
-          <line x1="18" y1="20" x2="18" y2="4" />
-        </svg>
-      );
+      const ADMIN_PASSWORD = "winetasting2025";
 
       function WineTastingForm() {
-        const [firstName, setFirstName] = useState("");
-        const [lastName, setLastName] = useState("");
-        const [isLoggedIn, setIsLoggedIn] = useState(false);
-        const [scores, setScores] = useState({});
-        const [currentTab, setCurrentTab] = useState("score"); // 'score' or 'review'
-        const [wineNumber, setWineNumber] = useState("");
-        const [currentScore, setCurrentScore] = useState("");
-        const [allVotes, setAllVotes] = useState([]);
-        const [excludedUsers, setExcludedUsers] = useState(new Set());
-        const [showAdmin, setShowAdmin] = useState(false);
-        const [adminPassword, setAdminPassword] = useState("");
-        const ADMIN_PASSWORD = "winetasting2025";
+        const [firstName, setFirstName] = React.useState("");
+        const [lastName, setLastName] = React.useState("");
+        const [isLoggedIn, setIsLoggedIn] = React.useState(false);
 
-        // Persist votes + exclusions in localStorage so refresh doesn't wipe them
-        useEffect(() => {
-          try {
-            const storedVotes = localStorage.getItem("wine_allVotes_v3");
-            if (storedVotes) setAllVotes(JSON.parse(storedVotes));
+        const [scores, setScores] = React.useState({});
+        const [currentTab, setCurrentTab] = React.useState("score"); // 'score' or 'review'
+        const [wineNumber, setWineNumber] = React.useState("");
+        const [currentScore, setCurrentScore] = React.useState("");
 
-            const storedExcluded = localStorage.getItem("wine_excludedUsers_v3");
-            if (storedExcluded) setExcludedUsers(new Set(JSON.parse(storedExcluded)));
-          } catch (e) {}
+        // CENTRALIZED state (from Firestore)
+        const [allVotes, setAllVotes] = React.useState([]);
+        const [excludedUsers, setExcludedUsers] = React.useState(new Set());
+
+        const [showAdmin, setShowAdmin] = React.useState(false);
+        const [adminPassword, setAdminPassword] = React.useState("");
+
+        const userName = `${firstName.trim()} ${lastName.trim()}`.trim();
+
+        // Live listener for ALL votes (centralized)
+        React.useEffect(() => {
+          const unsub = db
+            .collection("votes")
+            .orderBy("updatedAt", "desc")
+            .onSnapshot(
+              (snap) => {
+                const votes = [];
+                snap.forEach((doc) => votes.push({ id: doc.id, ...doc.data() }));
+                setAllVotes(votes);
+              },
+              (err) => {
+                console.error("Firestore votes listener error:", err);
+              }
+            );
+          return () => unsub();
         }, []);
 
-        useEffect(() => {
-          try {
-            localStorage.setItem("wine_allVotes_v3", JSON.stringify(allVotes));
-          } catch (e) {}
-        }, [allVotes]);
+        // Live listener for admin excluded users (centralized)
+        React.useEffect(() => {
+          const unsub = db.collection("admin").doc("settings").onSnapshot(
+            (doc) => {
+              const data = doc.exists ? doc.data() : {};
+              const arr = Array.isArray(data.excludedUsers) ? data.excludedUsers : [];
+              setExcludedUsers(new Set(arr));
+            },
+            (err) => {
+              console.error("Firestore admin/settings listener error:", err);
+            }
+          );
+          return () => unsub();
+        }, []);
 
-        useEffect(() => {
-          try {
-            localStorage.setItem("wine_excludedUsers_v3", JSON.stringify(Array.from(excludedUsers)));
-          } catch (e) {}
-        }, [excludedUsers]);
+        const normalizeDocId = (name) => {
+          // Firestore doc IDs can be most strings, but let's keep it clean
+          // Replace "/" because it breaks paths; trim; limit length
+          return name.replaceAll("/", "_").trim().slice(0, 200);
+        };
 
-        const handleLogin = () => {
-          if (firstName.trim() !== "" && lastName.trim() !== "") {
-            const userName = `${firstName.trim()} ${lastName.trim()}`;
-            const existingUser = allVotes.find((vote) => vote.name === userName);
-            if (existingUser) {
-              setScores(existingUser.scores || {});
-            } else {
-              setScores({});
+        const handleLogin = async () => {
+          if (!firstName.trim() || !lastName.trim()) return;
+
+          try {
+            const docId = normalizeDocId(userName);
+            const doc = await db.collection("votes").doc(docId).get();
+            if (doc.exists) {
+              const data = doc.data();
+              if (data && data.scores && typeof data.scores === "object") {
+                setScores(data.scores);
+              }
             }
             setIsLoggedIn(true);
+          } catch (e) {
+            console.error("Login load error:", e);
+            setIsLoggedIn(true); // still allow using app even if load fails
           }
         };
 
-        const handleLogout = () => {
-          if (Object.keys(scores).length > 0) {
-            const userName = `${firstName} ${lastName}`;
-            const userVote = {
-              name: userName,
-              scores: { ...scores },
-              timestamp: new Date().toISOString(),
-            };
-
-            // Remove existing vote from this user if any, then add new one
-            setAllVotes((prev) => {
-              const filtered = prev.filter((vote) => vote.name !== userName);
-              return [...filtered, userVote];
-            });
+        const handleLogout = async () => {
+          // Save centralized vote before logging out
+          try {
+            if (Object.keys(scores).length > 0 && userName) {
+              const docId = normalizeDocId(userName);
+              await db.collection("votes").doc(docId).set(
+                {
+                  name: userName,
+                  scores: { ...scores },
+                  updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                  timestampISO: new Date().toISOString(),
+                },
+                { merge: true }
+              );
+            }
+          } catch (e) {
+            console.error("Logout save error:", e);
           }
 
           setIsLoggedIn(false);
@@ -178,9 +183,9 @@
 
         const handleScoreDelete = (wineNum) => {
           setScores((prev) => {
-            const newScores = { ...prev };
-            delete newScores[wineNum];
-            return newScores;
+            const next = { ...prev };
+            delete next[wineNum];
+            return next;
           });
         };
 
@@ -188,17 +193,16 @@
           const italianScores = [];
           const frenchScores = [];
 
-          Object.entries(scores).forEach(([wineNum, score]) => {
-            const num = parseInt(wineNum, 10);
-            if (num % 2 === 0) italianScores.push(score);
-            else frenchScores.push(score);
+          Object.entries(scores).forEach(([w, s]) => {
+            const num = parseInt(w, 10);
+            if (num % 2 === 0) italianScores.push(s);
+            else frenchScores.push(s);
           });
 
           const italianAvg =
             italianScores.length > 0
               ? (italianScores.reduce((a, b) => a + b, 0) / italianScores.length).toFixed(2)
               : "N/A";
-
           const frenchAvg =
             frenchScores.length > 0
               ? (frenchScores.reduce((a, b) => a + b, 0) / frenchScores.length).toFixed(2)
@@ -215,27 +219,23 @@
           const allFrenchScores = [];
 
           allVotes.forEach((vote) => {
+            if (!vote || !vote.name || !vote.scores) return;
             if (excludedUsers.has(vote.name)) return;
 
-            Object.entries(vote.scores || {}).forEach(([wineNum, score]) => {
-              const num = parseInt(wineNum, 10);
-              if (num % 2 === 0) allItalianScores.push(score);
-              else allFrenchScores.push(score);
+            Object.entries(vote.scores).forEach(([w, s]) => {
+              const num = parseInt(w, 10);
+              if (num % 2 === 0) allItalianScores.push(s);
+              else allFrenchScores.push(s);
             });
           });
 
           const italianAvg =
             allItalianScores.length > 0
-              ? (
-                  allItalianScores.reduce((a, b) => a + b, 0) / allItalianScores.length
-                ).toFixed(2)
+              ? (allItalianScores.reduce((a, b) => a + b, 0) / allItalianScores.length).toFixed(2)
               : "N/A";
-
           const frenchAvg =
             allFrenchScores.length > 0
-              ? (
-                  allFrenchScores.reduce((a, b) => a + b, 0) / allFrenchScores.length
-                ).toFixed(2)
+              ? (allFrenchScores.reduce((a, b) => a + b, 0) / allFrenchScores.length).toFixed(2)
               : "N/A";
 
           return {
@@ -244,23 +244,35 @@
           };
         };
 
-        const toggleUserExclusion = (userName) => {
-          setExcludedUsers((prev) => {
-            const newSet = new Set(prev);
-            if (newSet.has(userName)) newSet.delete(userName);
-            else newSet.add(userName);
-            return newSet;
-          });
+        const toggleUserExclusion = async (name) => {
+          try {
+            const next = new Set(excludedUsers);
+            if (next.has(name)) next.delete(name);
+            else next.add(name);
+
+            // Save centrally so admin sees same exclusions on reload/device
+            await db.collection("admin").doc("settings").set(
+              {
+                excludedUsers: Array.from(next),
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+              },
+              { merge: true }
+            );
+          } catch (e) {
+            console.error("Toggle exclusion error:", e);
+          }
         };
 
-        const results = useMemo(() => calculateResults(), [scores]);
-        const globalResults = useMemo(() => calculateGlobalResults(), [allVotes, excludedUsers]);
+        const results = calculateResults();
+        const globalResults = calculateGlobalResults();
 
-        const wineNum = parseInt(wineNumber || "0", 10);
+        const wineNum = parseInt(wineNumber, 10);
         const isItalian = wineNum > 0 && wineNum % 2 === 0;
         const isFrench = wineNum > 0 && wineNum % 2 === 1;
 
-        // ----------------- ADMIN PANEL -----------------
+        // ------------------------
+        // ADMIN PANEL
+        // ------------------------
         if (showAdmin) {
           if (adminPassword !== ADMIN_PASSWORD) {
             return (
@@ -275,7 +287,7 @@
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent mb-4"
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
-                        // will re-render and validate
+                        // nothing else needed; UI will re-render automatically when password matches
                       }
                     }}
                   />
@@ -290,7 +302,7 @@
             );
           }
 
-          const includedCount = allVotes.filter((v) => !excludedUsers.has(v.name)).length;
+          const includedCount = allVotes.filter((v) => v && v.name && !excludedUsers.has(v.name)).length;
 
           return (
             <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-4">
@@ -308,26 +320,26 @@
                       Exit Admin
                     </button>
                   </div>
+                  <p className="mt-2 text-sm text-gray-600">
+                    Centralized votes: updates live from everyone’s phones (and stay after reload).
+                  </p>
                 </div>
 
                 {/* Global Results */}
                 <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
                   <h2 className="text-xl font-bold text-gray-800 mb-4">Overall Results (All Votes)</h2>
-
                   <div className="grid md:grid-cols-2 gap-4 mb-4">
                     <div className="p-6 bg-red-50 rounded-lg border-2 border-red-300">
                       <h3 className="font-bold text-red-800 mb-2">🇮🇹 Italian Wines</h3>
                       <p className="text-3xl font-bold text-red-600">{globalResults.italian.avg}</p>
                       <p className="text-sm text-gray-600">{globalResults.italian.count} total votes</p>
                     </div>
-
                     <div className="p-6 bg-blue-50 rounded-lg border-2 border-blue-300">
                       <h3 className="font-bold text-blue-800 mb-2">🇫🇷 French Wines</h3>
                       <p className="text-3xl font-bold text-blue-600">{globalResults.french.avg}</p>
                       <p className="text-sm text-gray-600">{globalResults.french.count} total votes</p>
                     </div>
                   </div>
-
                   {globalResults.italian.avg !== "N/A" && globalResults.french.avg !== "N/A" && (
                     <div className="p-4 bg-purple-50 rounded-lg border-2 border-purple-300 text-center">
                       <p className="text-lg font-bold text-purple-800">
@@ -352,35 +364,34 @@
                   ) : (
                     <div className="space-y-4">
                       {allVotes.map((vote, index) => {
-                        const isExcluded = excludedUsers.has(vote.name);
+                        const isExcluded = vote?.name ? excludedUsers.has(vote.name) : false;
 
                         const userResults = {
                           italian: { scores: [], avg: "N/A" },
                           french: { scores: [], avg: "N/A" },
                         };
 
-                        Object.entries(vote.scores || {}).forEach(([wineNum, score]) => {
-                          if (parseInt(wineNum, 10) % 2 === 0) userResults.italian.scores.push(score);
-                          else userResults.french.scores.push(score);
-                        });
+                        if (vote && vote.scores) {
+                          Object.entries(vote.scores).forEach(([w, s]) => {
+                            if (parseInt(w, 10) % 2 === 0) userResults.italian.scores.push(s);
+                            else userResults.french.scores.push(s);
+                          });
+                        }
 
                         if (userResults.italian.scores.length > 0) {
                           userResults.italian.avg = (
-                            userResults.italian.scores.reduce((a, b) => a + b, 0) /
-                            userResults.italian.scores.length
+                            userResults.italian.scores.reduce((a, b) => a + b, 0) / userResults.italian.scores.length
                           ).toFixed(2);
                         }
-
                         if (userResults.french.scores.length > 0) {
                           userResults.french.avg = (
-                            userResults.french.scores.reduce((a, b) => a + b, 0) /
-                            userResults.french.scores.length
+                            userResults.french.scores.reduce((a, b) => a + b, 0) / userResults.french.scores.length
                           ).toFixed(2);
                         }
 
                         return (
                           <div
-                            key={index}
+                            key={vote?.id || index}
                             className={`border-2 rounded-lg p-4 ${
                               isExcluded ? "border-gray-300 bg-gray-50 opacity-60" : "border-gray-200 bg-white"
                             }`}
@@ -388,23 +399,21 @@
                             <div className="flex items-center justify-between mb-3">
                               <div className="flex items-center gap-3">
                                 <button
-                                  onClick={() => toggleUserExclusion(vote.name)}
+                                  onClick={() => vote?.name && toggleUserExclusion(vote.name)}
                                   className={`w-6 h-6 rounded border-2 flex items-center justify-center transition ${
                                     isExcluded ? "bg-gray-300 border-gray-400" : "bg-green-500 border-green-600"
                                   }`}
-                                  title={isExcluded ? "Click to include" : "Click to exclude"}
+                                  title={isExcluded ? "Excluded from global results" : "Included in global results"}
                                 >
                                   {!isExcluded && <span className="text-white text-sm">✓</span>}
                                 </button>
-
                                 <h3 className="font-bold text-lg text-gray-800">
-                                  {vote.name}
+                                  {vote?.name || "Unnamed"}
                                   {isExcluded && <span className="ml-2 text-sm text-red-600">(Excluded)</span>}
                                 </h3>
                               </div>
-
                               <span className="text-sm text-gray-500">
-                                {Object.keys(vote.scores || {}).length} wines rated
+                                {vote?.scores ? Object.keys(vote.scores).length : 0} wines rated
                               </span>
                             </div>
 
@@ -414,7 +423,6 @@
                                 <p className="text-xl font-bold text-red-600">{userResults.italian.avg}</p>
                                 <p className="text-xs text-gray-600">{userResults.italian.scores.length} wines</p>
                               </div>
-
                               <div className="p-3 bg-blue-50 rounded border border-blue-200">
                                 <p className="text-sm font-medium text-blue-800">🇫🇷 French Avg</p>
                                 <p className="text-xl font-bold text-blue-600">{userResults.french.avg}</p>
@@ -426,23 +434,24 @@
                               <summary className="cursor-pointer text-sm text-purple-600 hover:text-purple-700 font-medium">
                                 View individual scores
                               </summary>
-
                               <div className="mt-2 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
-                                {Object.entries(vote.scores || {})
-                                  .sort(([a], [b]) => parseInt(a, 10) - parseInt(b, 10))
-                                  .map(([wineNum, score]) => (
-                                    <div
-                                      key={wineNum}
-                                      className={`p-2 rounded text-center ${
-                                        parseInt(wineNum, 10) % 2 === 0
-                                          ? "bg-red-100 border border-red-300"
-                                          : "bg-blue-100 border border-blue-300"
-                                      }`}
-                                    >
-                                      <p className="text-xs font-medium">Wine {wineNum}</p>
-                                      <p className="text-lg font-bold">{score}</p>
-                                    </div>
-                                  ))}
+                                {vote?.scores
+                                  ? Object.entries(vote.scores)
+                                      .sort(([a], [b]) => parseInt(a, 10) - parseInt(b, 10))
+                                      .map(([w, s]) => (
+                                        <div
+                                          key={w}
+                                          className={`p-2 rounded text-center ${
+                                            parseInt(w, 10) % 2 === 0
+                                              ? "bg-red-100 border border-red-300"
+                                              : "bg-blue-100 border border-blue-300"
+                                          }`}
+                                        >
+                                          <p className="text-xs font-medium">Wine {w}</p>
+                                          <p className="text-lg font-bold">{s}</p>
+                                        </div>
+                                      ))
+                                  : null}
                               </div>
                             </details>
                           </div>
@@ -456,17 +465,18 @@
           );
         }
 
-        // ----------------- LOGIN SCREEN -----------------
+        // ------------------------
+        // LOGIN SCREEN
+        // ------------------------
         if (!isLoggedIn) {
           return (
             <div className="min-h-screen bg-gradient-to-br from-red-50 via-white to-blue-50 flex items-center justify-center p-4">
               <div className="bg-white rounded-lg shadow-xl p-8 max-w-md w-full">
                 <div className="flex items-center justify-center gap-3 mb-6">
-                  <WineIcon className="text-red-600" size={40} />
+                  <span className="text-4xl">🍷</span>
                   <h1 className="text-3xl font-bold text-gray-800">Wine Tasting</h1>
-                  <WineIcon className="text-blue-600" size={40} />
+                  <span className="text-4xl">🍷</span>
                 </div>
-
                 <p className="text-center text-gray-600 mb-8">Italy 🇮🇹 vs France 🇫🇷</p>
 
                 <div className="space-y-4 mb-6">
@@ -515,12 +525,18 @@
                 >
                   Admin Access
                 </button>
+
+                <p className="mt-6 text-xs text-gray-500 text-center">
+                  Votes are centralized and saved online (everyone’s phones + reload-safe).
+                </p>
               </div>
             </div>
           );
         }
 
-        // ----------------- MAIN APP -----------------
+        // ------------------------
+        // MAIN APP (AFTER LOGIN)
+        // ------------------------
         return (
           <div className="min-h-screen bg-gradient-to-br from-red-50 via-white to-blue-50 p-4">
             <div className="max-w-4xl mx-auto">
@@ -528,7 +544,7 @@
               <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
-                    <WineIcon className="text-red-600" size={32} />
+                    <span className="text-3xl">🍷</span>
                     <div>
                       <h1 className="text-2xl font-bold text-gray-800">Wine Tasting Contest</h1>
                       <p className="text-sm text-gray-600">Italy 🇮🇹 vs France 🇫🇷</p>
@@ -539,16 +555,14 @@
                     onClick={handleLogout}
                     className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
                   >
-                    <LogoutIcon size={20} />
+                    <span className="text-lg">🚪</span>
                     <span className="text-sm font-medium">Logout</span>
                   </button>
                 </div>
 
                 <div className="flex items-center gap-2 p-3 bg-purple-50 rounded-lg border border-purple-200">
-                  <UserIcon size={20} className="text-purple-600" />
-                  <span className="font-semibold text-gray-800">
-                    {firstName} {lastName}
-                  </span>
+                  <span className="text-purple-600">👤</span>
+                  <span className="font-semibold text-gray-800">{userName}</span>
                 </div>
               </div>
 
@@ -565,7 +579,6 @@
                   >
                     Score a Wine
                   </button>
-
                   <button
                     onClick={() => setCurrentTab("review")}
                     className={`flex-1 py-4 font-semibold transition ${
@@ -586,7 +599,6 @@
                     <div className="space-y-6">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">Wine Number</label>
-
                         <div className="relative">
                           <input
                             type="number"
@@ -596,12 +608,11 @@
                             value={wineNumber}
                             onChange={(e) => setWineNumber(e.target.value)}
                             onKeyDown={(e) => {
-                              if ([".", "-", "+", "e", "E"].includes(e.key)) e.preventDefault();
+                              if (e.key === "." || e.key === "-" || e.key === "+" || e.key === "e") e.preventDefault();
                             }}
                             placeholder="Enter wine number"
                             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-center text-2xl font-bold"
                           />
-
                           {wineNum > 0 && (
                             <div className="absolute right-4 top-1/2 -translate-y-1/2 text-4xl">
                               {isItalian ? "🇮🇹" : isFrench ? "🇫🇷" : ""}
@@ -616,10 +627,9 @@
                           </p>
                         )}
 
-                        {scores[wineNumber] && (
+                        {scores[wineNum] && (
                           <p className="mt-2 text-center text-sm text-orange-600 font-medium">
-                            ⚠️ You already scored this wine with {scores[wineNumber]}/10. You can edit it in
-                            "Review My Scores".
+                            ⚠️ You already scored this wine with {scores[wineNum]}/10. You can edit it in "Review My Scores".
                           </p>
                         )}
                       </div>
@@ -636,7 +646,7 @@
                           value={currentScore}
                           onChange={(e) => setCurrentScore(e.target.value)}
                           onKeyDown={(e) => {
-                            if ([".", "-", "+", "e", "E"].includes(e.key)) e.preventDefault();
+                            if (e.key === "." || e.key === "-" || e.key === "+" || e.key === "e") e.preventDefault();
                           }}
                           placeholder="Enter score 1-10"
                           className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-center text-2xl font-bold"
@@ -645,25 +655,19 @@
 
                       <button
                         onClick={handleScoreSubmit}
-                        disabled={
-                          !wineNumber ||
-                          wineNum <= 0 ||
-                          !currentScore ||
-                          parseInt(currentScore, 10) < 1 ||
-                          parseInt(currentScore, 10) > 10
-                        }
+                        disabled={!wineNumber || wineNum <= 0 || !currentScore || currentScore < 1 || currentScore > 10}
                         className={`w-full py-4 rounded-lg font-bold text-lg transition ${
-                          wineNumber &&
-                          wineNum > 0 &&
-                          currentScore &&
-                          parseInt(currentScore, 10) >= 1 &&
-                          parseInt(currentScore, 10) <= 10
+                          wineNumber && wineNum > 0 && currentScore && currentScore >= 1 && currentScore <= 10
                             ? "bg-purple-600 hover:bg-purple-700 text-white"
                             : "bg-gray-300 text-gray-500 cursor-not-allowed"
                         }`}
                       >
                         Submit Score
                       </button>
+
+                      <p className="text-xs text-gray-500 text-center">
+                        Your scores are saved to the centralized database when you log out.
+                      </p>
                     </div>
                   </div>
                 )}
@@ -682,22 +686,19 @@
                       <div className="space-y-3">
                         {Object.entries(scores)
                           .sort(([a], [b]) => parseInt(a, 10) - parseInt(b, 10))
-                          .map(([wineNum, score]) => {
-                            const italian = parseInt(wineNum, 10) % 2 === 0;
-
+                          .map(([w, s]) => {
+                            const it = parseInt(w, 10) % 2 === 0;
                             return (
                               <div
-                                key={wineNum}
-                                className={`p-4 rounded-lg border-2 ${
-                                  italian ? "bg-red-50 border-red-300" : "bg-blue-50 border-blue-300"
-                                }`}
+                                key={w}
+                                className={`p-4 rounded-lg border-2 ${it ? "bg-red-50 border-red-300" : "bg-blue-50 border-blue-300"}`}
                               >
                                 <div className="flex items-center justify-between">
                                   <div className="flex items-center gap-3">
-                                    <span className="text-3xl">{italian ? "🇮🇹" : "🇫🇷"}</span>
+                                    <span className="text-3xl">{it ? "🇮🇹" : "🇫🇷"}</span>
                                     <div>
-                                      <p className="font-bold text-lg">Wine #{wineNum}</p>
-                                      <p className="text-sm text-gray-600">{italian ? "Italian" : "French"}</p>
+                                      <p className="font-bold text-lg">Wine #{w}</p>
+                                      <p className="text-sm text-gray-600">{it ? "Italian" : "French"}</p>
                                     </div>
                                   </div>
 
@@ -709,21 +710,20 @@
                                       min="1"
                                       max="10"
                                       step="1"
-                                      value={score}
+                                      value={s}
                                       onChange={(e) => {
                                         const val = e.target.value;
                                         if (val === "" || (parseInt(val, 10) >= 1 && parseInt(val, 10) <= 10)) {
-                                          handleScoreUpdate(wineNum, parseInt(val, 10) || score);
+                                          handleScoreUpdate(w, parseInt(val, 10) || s);
                                         }
                                       }}
                                       onKeyDown={(e) => {
-                                        if ([".", "-", "+", "e", "E"].includes(e.key)) e.preventDefault();
+                                        if (e.key === "." || e.key === "-" || e.key === "+" || e.key === "e") e.preventDefault();
                                       }}
                                       className="w-20 px-3 py-2 border border-gray-300 rounded-lg text-center text-xl font-bold focus:ring-2 focus:ring-purple-500"
                                     />
-
                                     <button
-                                      onClick={() => handleScoreDelete(wineNum)}
+                                      onClick={() => handleScoreDelete(w)}
                                       className="px-3 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium transition"
                                     >
                                       Delete
@@ -740,7 +740,7 @@
                     {Object.keys(scores).length > 0 && (
                       <div className="mt-6 pt-6 border-t">
                         <div className="flex items-center gap-2 mb-4">
-                          <BarChartIcon className="text-purple-600" size={24} />
+                          <span className="text-purple-600">📊</span>
                           <h3 className="text-lg font-bold text-gray-800">Your Summary</h3>
                         </div>
 
@@ -750,7 +750,6 @@
                             <p className="text-2xl font-bold text-red-600">{results.italian.avg}</p>
                             <p className="text-sm text-gray-600">{results.italian.count} wines rated</p>
                           </div>
-
                           <div className="p-4 bg-blue-50 rounded-lg border-2 border-blue-300">
                             <h4 className="font-bold text-blue-800 mb-1">🇫🇷 French Wines</h4>
                             <p className="text-2xl font-bold text-blue-600">{results.french.avg}</p>
@@ -769,6 +768,10 @@
                             </p>
                           </div>
                         )}
+
+                        <p className="mt-4 text-xs text-gray-500 text-center">
+                          Your vote is written to the centralized database when you log out.
+                        </p>
                       </div>
                     )}
                   </div>
@@ -779,8 +782,7 @@
         );
       }
 
-      const root = ReactDOM.createRoot(document.getElementById("root"));
-      root.render(<WineTastingForm />);
+      ReactDOM.createRoot(document.getElementById("root")).render(<WineTastingForm />);
     </script>
   </body>
 </html>
