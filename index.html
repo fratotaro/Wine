@@ -1,570 +1,613 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Wine Tasting Contest — Italy vs France</title>
+import React, { useState } from ‘react’;
+import { Wine, BarChart3, User, LogOut } from ‘lucide-react’;
 
-  <!-- Tailwind CDN (good enough for this kind of single-file app) -->
-  <script src="https://cdn.tailwindcss.com"></script>
+export default function WineTastingForm() {
+const [firstName, setFirstName] = useState(’’);
+const [lastName, setLastName] = useState(’’);
+const [isLoggedIn, setIsLoggedIn] = useState(false);
+const [scores, setScores] = useState({});
+const [currentTab, setCurrentTab] = useState(‘score’); // ‘score’ or ‘review’
+const [wineNumber, setWineNumber] = useState(’’);
+const [currentScore, setCurrentScore] = useState(’’);
+const [allVotes, setAllVotes] = useState([]);
+const [showAdmin, setShowAdmin] = useState(false);
+const [adminPassword, setAdminPassword] = useState(’’);
+const ADMIN_PASSWORD = ‘winetasting2025’;
 
-  <!-- Lucide icons CDN -->
-  <script src="https://unpkg.com/lucide@latest"></script>
-</head>
+const handleLogin = () => {
+if (firstName.trim() !== ‘’ && lastName.trim() !== ‘’) {
+setIsLoggedIn(true);
+}
+};
 
-<body class="min-h-screen bg-gradient-to-br from-red-50 via-white to-blue-50">
-  <div id="app" class="min-h-screen"></div>
+const handleLogout = () => {
+// Save votes before logging out
+if (Object.keys(scores).length > 0) {
+const userVote = {
+name: `${firstName} ${lastName}`,
+scores: { …scores },
+timestamp: new Date().toISOString()
+};
+setAllVotes(prev => […prev, userVote]);
+}
 
-  <script>
-    // ---------- Simple state ----------
-    const state = {
-      firstName: "",
-      lastName: "",
-      isLoggedIn: false,
-      scores: {},            // { [wineNumber]: score }
-      currentTab: "score",   // "score" | "review"
-      wineNumber: "",
-      currentScore: ""
-    };
+```
+setIsLoggedIn(false);
+setFirstName('');
+setLastName('');
+setScores({});
+setWineNumber('');
+setCurrentScore('');
+setCurrentTab('score');
+```
 
-    // ---------- Persistence ----------
-    const STORAGE_SCORES_KEY = "wineScores";
-    const STORAGE_USER_KEY = "wineUser";
+};
 
-    function loadFromStorage() {
-      try {
-        const savedScores = localStorage.getItem(STORAGE_SCORES_KEY);
-        const savedUser = localStorage.getItem(STORAGE_USER_KEY);
+const handleScoreSubmit = () => {
+const wineNum = parseInt(wineNumber);
+const score = parseInt(currentScore);
+if (wineNum > 0 && score >= 1 && score <= 10) {
+setScores(prev => ({ …prev, [wineNum]: score }));
+setWineNumber(’’);
+setCurrentScore(’’);
+}
+};
 
-        if (savedScores) state.scores = JSON.parse(savedScores) || {};
-        if (savedUser) {
-          const u = JSON.parse(savedUser) || {};
-          state.firstName = u.firstName || "";
-          state.lastName = u.lastName || "";
-          state.isLoggedIn = !!(state.firstName.trim() && state.lastName.trim());
-        }
-      } catch (_) {
-        // ignore
-      }
+const handleScoreUpdate = (wineNum, newScore) => {
+if (newScore >= 1 && newScore <= 10) {
+setScores(prev => ({ …prev, [wineNum]: parseInt(newScore) }));
+}
+};
+
+const handleScoreDelete = (wineNum) => {
+setScores(prev => {
+const newScores = { …prev };
+delete newScores[wineNum];
+return newScores;
+});
+};
+
+const calculateResults = () => {
+const italianScores = [];
+const frenchScores = [];
+
+```
+Object.entries(scores).forEach(([wineNum, score]) => {
+  const num = parseInt(wineNum);
+  if (num % 2 === 0) {
+    italianScores.push(score);
+  } else {
+    frenchScores.push(score);
+  }
+});
+
+const italianAvg = italianScores.length > 0 
+  ? (italianScores.reduce((a, b) => a + b, 0) / italianScores.length).toFixed(2)
+  : 'N/A';
+
+const frenchAvg = frenchScores.length > 0
+  ? (frenchScores.reduce((a, b) => a + b, 0) / frenchScores.length).toFixed(2)
+  : 'N/A';
+
+return {
+  italian: { avg: italianAvg, count: italianScores.length },
+  french: { avg: frenchAvg, count: frenchScores.length }
+};
+```
+
+};
+
+const calculateGlobalResults = () => {
+const allItalianScores = [];
+const allFrenchScores = [];
+
+```
+allVotes.forEach(vote => {
+  Object.entries(vote.scores).forEach(([wineNum, score]) => {
+    const num = parseInt(wineNum);
+    if (num % 2 === 0) {
+      allItalianScores.push(score);
+    } else {
+      allFrenchScores.push(score);
     }
+  });
+});
 
-    function saveScores() {
-      try { localStorage.setItem(STORAGE_SCORES_KEY, JSON.stringify(state.scores)); } catch (_) {}
-    }
-    function saveUser() {
-      try { localStorage.setItem(STORAGE_USER_KEY, JSON.stringify({ firstName: state.firstName, lastName: state.lastName })); } catch (_) {}
-    }
-    function clearStorage() {
-      try {
-        localStorage.removeItem(STORAGE_SCORES_KEY);
-        localStorage.removeItem(STORAGE_USER_KEY);
-      } catch (_) {}
-    }
+const italianAvg = allItalianScores.length > 0 
+  ? (allItalianScores.reduce((a, b) => a + b, 0) / allItalianScores.length).toFixed(2)
+  : 'N/A';
 
-    // ---------- Helpers ----------
-    function esc(s) {
-      return String(s).replace(/[&<>"']/g, (c) => ({
-        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"
-      })[c]);
-    }
+const frenchAvg = allFrenchScores.length > 0
+  ? (allFrenchScores.reduce((a, b) => a + b, 0) / allFrenchScores.length).toFixed(2)
+  : 'N/A';
 
-    function parseIntSafe(v) {
-      const n = parseInt(v, 10);
-      return Number.isFinite(n) ? n : NaN;
-    }
+return {
+  italian: { avg: italianAvg, count: allItalianScores.length },
+  french: { avg: frenchAvg, count: allFrenchScores.length }
+};
+```
 
-    function calcResults(scores) {
-      const italian = [];
-      const french = [];
+};
 
-      Object.entries(scores).forEach(([wineNum, score]) => {
-        const n = parseIntSafe(wineNum);
-        if (!Number.isFinite(n)) return;
-        if (n % 2 === 0) italian.push(score);
-        else french.push(score);
-      });
+const results = calculateResults();
+const globalResults = calculateGlobalResults();
+const wineNum = parseInt(wineNumber);
+const isItalian = wineNum > 0 && wineNum % 2 === 0;
+const isFrench = wineNum > 0 && wineNum % 2 === 1;
 
-      const avg = (arr) => arr.length ? (arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(2) : "N/A";
+// Admin Panel
+if (showAdmin) {
+if (adminPassword !== ADMIN_PASSWORD) {
+return (
+<div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-4">
+<div className="bg-white rounded-lg shadow-xl p-8 max-w-md w-full">
+<h1 className="text-2xl font-bold text-gray-800 mb-6 text-center">Admin Access</h1>
+<input
+type=“password”
+value={adminPassword}
+onChange={(e) => setAdminPassword(e.target.value)}
+placeholder=“Enter admin password”
+className=“w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent mb-4”
+onKeyPress={(e) => e.key === ‘Enter’ && adminPassword === ADMIN_PASSWORD}
+/>
+<button
+onClick={() => setShowAdmin(false)}
+className=“w-full py-3 bg-gray-300 hover:bg-gray-400 text-gray-800 rounded-lg font-medium”
+>
+Back to Login
+</button>
+</div>
+</div>
+);
+}
 
-      return {
-        italian: { avg: avg(italian), count: italian.length },
-        french: { avg: avg(french), count: french.length }
-      };
-    }
+```
+return (
+  <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-4">
+    <div className="max-w-6xl mx-auto">
+      <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold text-gray-800">Admin Dashboard</h1>
+          <button
+            onClick={() => {
+              setShowAdmin(false);
+              setAdminPassword('');
+            }}
+            className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium"
+          >
+            Exit Admin
+          </button>
+        </div>
+      </div>
 
-    function preventNonIntegerKeys(e) {
-      if ([".", "-", "+", "e", "E"].includes(e.key)) e.preventDefault();
-    }
-
-    // ---------- Actions ----------
-    function login() {
-      if (state.firstName.trim() && state.lastName.trim()) {
-        state.isLoggedIn = true;
-        saveUser();
-        render();
-      }
-    }
-
-    function logout() {
-      state.isLoggedIn = false;
-      state.firstName = "";
-      state.lastName = "";
-      state.scores = {};
-      state.wineNumber = "";
-      state.currentScore = "";
-      state.currentTab = "score";
-      clearStorage();
-      render();
-    }
-
-    function submitScore() {
-      const wineNum = parseIntSafe(state.wineNumber);
-      const score = parseIntSafe(state.currentScore);
-
-      if (!(wineNum > 0)) return;
-      if (!(score >= 1 && score <= 10)) return;
-
-      // Block overwriting via submit (edit on Review tab instead)
-      if (state.scores[wineNum]) return;
-
-      state.scores[wineNum] = score;
-      saveScores();
-
-      state.wineNumber = "";
-      state.currentScore = "";
-      render();
-    }
-
-    function updateScore(wineNum, newScore) {
-      const n = parseIntSafe(newScore);
-      if (n >= 1 && n <= 10) {
-        state.scores[wineNum] = n;
-        saveScores();
-        render(); // OK for small lists; simple.
-      }
-    }
-
-    function deleteScore(wineNum) {
-      delete state.scores[wineNum];
-      saveScores();
-      render();
-    }
-
-    function setTab(tab) {
-      state.currentTab = tab;
-      render();
-    }
-
-    // ---------- Rendering ----------
-    const app = document.getElementById("app");
-
-    function render() {
-      // Re-init lucide after HTML changes
-      const html = state.isLoggedIn ? renderMain() : renderLogin();
-      app.innerHTML = html;
-
-      // Bind events after injection
-      bindEvents();
-
-      // Render icons
-      if (window.lucide) window.lucide.createIcons();
-    }
-
-    function renderLogin() {
-      return `
-        <div class="min-h-screen flex items-center justify-center p-4">
-          <div class="bg-white rounded-lg shadow-xl p-8 max-w-md w-full">
-            <div class="flex items-center justify-center gap-3 mb-6">
-              <i data-lucide="wine" class="text-red-600" style="width:40px;height:40px;"></i>
-              <h1 class="text-3xl font-bold text-gray-800">Wine Tasting</h1>
-              <i data-lucide="wine" class="text-blue-600" style="width:40px;height:40px;"></i>
-            </div>
-            <p class="text-center text-gray-600 mb-8">Italy 🇮🇹 vs France 🇫🇷</p>
-
-            <div class="space-y-4 mb-6">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">
-                  First Name <span class="text-red-500">*</span>
-                </label>
-                <input
-                  id="firstName"
-                  type="text"
-                  value="${esc(state.firstName)}"
-                  placeholder="Enter your first name"
-                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                />
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">
-                  Last Name <span class="text-red-500">*</span>
-                </label>
-                <input
-                  id="lastName"
-                  type="text"
-                  value="${esc(state.lastName)}"
-                  placeholder="Enter your last name"
-                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                />
-              </div>
-            </div>
-
-            <button
-              id="loginBtn"
-              class="w-full py-3 rounded-lg font-bold text-lg transition ${
-                state.firstName.trim() && state.lastName.trim()
-                  ? "bg-purple-600 hover:bg-purple-700 text-white"
-                  : "bg-gray-300 text-gray-500 cursor-not-allowed"
-              }"
-              ${state.firstName.trim() && state.lastName.trim() ? "" : "disabled"}
-            >
-              Start Tasting
-            </button>
+      {/* Global Results */}
+      <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+        <h2 className="text-xl font-bold text-gray-800 mb-4">Overall Results (All Votes)</h2>
+        <div className="grid md:grid-cols-2 gap-4 mb-4">
+          <div className="p-6 bg-red-50 rounded-lg border-2 border-red-300">
+            <h3 className="font-bold text-red-800 mb-2">🇮🇹 Italian Wines</h3>
+            <p className="text-3xl font-bold text-red-600">{globalResults.italian.avg}</p>
+            <p className="text-sm text-gray-600">{globalResults.italian.count} total votes</p>
+          </div>
+          <div className="p-6 bg-blue-50 rounded-lg border-2 border-blue-300">
+            <h3 className="font-bold text-blue-800 mb-2">🇫🇷 French Wines</h3>
+            <p className="text-3xl font-bold text-blue-600">{globalResults.french.avg}</p>
+            <p className="text-sm text-gray-600">{globalResults.french.count} total votes</p>
           </div>
         </div>
-      `;
-    }
+        {globalResults.italian.avg !== 'N/A' && globalResults.french.avg !== 'N/A' && (
+          <div className="p-4 bg-purple-50 rounded-lg border-2 border-purple-300 text-center">
+            <p className="text-lg font-bold text-purple-800">
+              {parseFloat(globalResults.italian.avg) > parseFloat(globalResults.french.avg)
+                ? '🇮🇹 Italian wines are winning!'
+                : parseFloat(globalResults.french.avg) > parseFloat(globalResults.italian.avg)
+                ? '🇫🇷 French wines are winning!'
+                : '🤝 It\'s a tie!'}
+            </p>
+          </div>
+        )}
+      </div>
 
-    function renderMain() {
-      const results = calcResults(state.scores);
-      const scoredCount = Object.keys(state.scores).length;
+      {/* Individual Participants */}
+      <div className="bg-white rounded-lg shadow-lg p-6">
+        <h2 className="text-xl font-bold text-gray-800 mb-4">Individual Participants ({allVotes.length})</h2>
+        {allVotes.length === 0 ? (
+          <p className="text-gray-600 text-center py-8">No votes submitted yet</p>
+        ) : (
+          <div className="space-y-4">
+            {allVotes.map((vote, index) => {
+              const userResults = {
+                italian: { scores: [], avg: 'N/A' },
+                french: { scores: [], avg: 'N/A' }
+              };
+              
+              Object.entries(vote.scores).forEach(([wineNum, score]) => {
+                if (parseInt(wineNum) % 2 === 0) {
+                  userResults.italian.scores.push(score);
+                } else {
+                  userResults.french.scores.push(score);
+                }
+              });
 
-      return `
-        <div class="min-h-screen p-4">
-          <div class="max-w-4xl mx-auto">
+              if (userResults.italian.scores.length > 0) {
+                userResults.italian.avg = (
+                  userResults.italian.scores.reduce((a, b) => a + b, 0) / 
+                  userResults.italian.scores.length
+                ).toFixed(2);
+              }
+              
+              if (userResults.french.scores.length > 0) {
+                userResults.french.avg = (
+                  userResults.french.scores.reduce((a, b) => a + b, 0) / 
+                  userResults.french.scores.length
+                ).toFixed(2);
+              }
 
-            <!-- Header -->
-            <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
-              <div class="flex items-center justify-between mb-4">
-                <div class="flex items-center gap-3">
-                  <i data-lucide="wine" class="text-red-600" style="width:32px;height:32px;"></i>
-                  <div>
-                    <h1 class="text-2xl font-bold text-gray-800">Wine Tasting Contest</h1>
-                    <p class="text-sm text-gray-600">Italy 🇮🇹 vs France 🇫🇷</p>
+              return (
+                <div key={index} className="border-2 border-gray-200 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-bold text-lg text-gray-800">{vote.name}</h3>
+                    <span className="text-sm text-gray-500">
+                      {Object.keys(vote.scores).length} wines rated
+                    </span>
                   </div>
+                  
+                  <div className="grid md:grid-cols-2 gap-3 mb-3">
+                    <div className="p-3 bg-red-50 rounded border border-red-200">
+                      <p className="text-sm font-medium text-red-800">🇮🇹 Italian Avg</p>
+                      <p className="text-xl font-bold text-red-600">{userResults.italian.avg}</p>
+                      <p className="text-xs text-gray-600">
+                        {userResults.italian.scores.length} wines
+                      </p>
+                    </div>
+                    <div className="p-3 bg-blue-50 rounded border border-blue-200">
+                      <p className="text-sm font-medium text-blue-800">🇫🇷 French Avg</p>
+                      <p className="text-xl font-bold text-blue-600">{userResults.french.avg}</p>
+                      <p className="text-xs text-gray-600">
+                        {userResults.french.scores.length} wines
+                      </p>
+                    </div>
+                  </div>
+
+                  <details className="mt-2">
+                    <summary className="cursor-pointer text-sm text-purple-600 hover:text-purple-700 font-medium">
+                      View individual scores
+                    </summary>
+                    <div className="mt-2 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+                      {Object.entries(vote.scores)
+                        .sort(([a], [b]) => parseInt(a) - parseInt(b))
+                        .map(([wineNum, score]) => (
+                          <div
+                            key={wineNum}
+                            className={`p-2 rounded text-center ${
+                              parseInt(wineNum) % 2 === 0
+                                ? 'bg-red-100 border border-red-300'
+                                : 'bg-blue-100 border border-blue-300'
+                            }`}
+                          >
+                            <p className="text-xs font-medium">Wine {wineNum}</p>
+                            <p className="text-lg font-bold">{score}</p>
+                          </div>
+                        ))}
+                    </div>
+                  </details>
                 </div>
-                <button
-                  id="logoutBtn"
-                  class="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
-                >
-                  <i data-lucide="log-out" style="width:20px;height:20px;"></i>
-                  <span class="text-sm font-medium">Logout</span>
-                </button>
-              </div>
-
-              <div class="flex items-center gap-2 p-3 bg-purple-50 rounded-lg border border-purple-200">
-                <i data-lucide="user" class="text-purple-600" style="width:20px;height:20px;"></i>
-                <span class="font-semibold text-gray-800">${esc(state.firstName)} ${esc(state.lastName)}</span>
-              </div>
-            </div>
-
-            <!-- Tabs -->
-            <div class="bg-white rounded-lg shadow-lg mb-6">
-              <div class="flex border-b">
-                <button
-                  id="tabScore"
-                  class="flex-1 py-4 font-semibold transition ${
-                    state.currentTab === "score"
-                      ? "bg-purple-600 text-white"
-                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                  } rounded-tl-lg"
-                >
-                  Score a Wine
-                </button>
-                <button
-                  id="tabReview"
-                  class="flex-1 py-4 font-semibold transition ${
-                    state.currentTab === "review"
-                      ? "bg-purple-600 text-white"
-                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                  } rounded-tr-lg"
-                >
-                  Review My Scores (${scoredCount})
-                </button>
-              </div>
-
-              ${state.currentTab === "score" ? renderScoreTab() : renderReviewTab(results)}
-            </div>
+              );
+            })}
           </div>
+        )}
+      </div>
+    </div>
+  </div>
+);
+```
+
+}
+
+// Login Screen
+if (!isLoggedIn) {
+return (
+<div className="min-h-screen bg-gradient-to-br from-red-50 via-white to-blue-50 flex items-center justify-center p-4">
+<div className="bg-white rounded-lg shadow-xl p-8 max-w-md w-full">
+<div className="flex items-center justify-center gap-3 mb-6">
+<Wine className="text-red-600" size={40} />
+<h1 className="text-3xl font-bold text-gray-800">Wine Tasting</h1>
+<Wine className="text-blue-600" size={40} />
+</div>
+<p className="text-center text-gray-600 mb-8">Italy 🇮🇹 vs France 🇫🇷</p>
+
+```
+      <div className="space-y-4 mb-6">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            First Name <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            value={firstName}
+            onChange={(e) => setFirstName(e.target.value)}
+            placeholder="Enter your first name"
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+          />
         </div>
-      `;
-    }
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Last Name <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            value={lastName}
+            onChange={(e) => setLastName(e.target.value)}
+            placeholder="Enter your last name"
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+          />
+        </div>
+      </div>
 
-    function renderScoreTab() {
-      const wineNum = parseIntSafe(state.wineNumber);
-      const isItalian = wineNum > 0 && wineNum % 2 === 0;
-      const isFrench = wineNum > 0 && wineNum % 2 === 1;
-      const alreadyScored = wineNum > 0 && state.scores[wineNum] != null;
+      <button
+        onClick={handleLogin}
+        disabled={!firstName.trim() || !lastName.trim()}
+        className={`w-full py-3 rounded-lg font-bold text-lg transition mb-3 ${
+          firstName.trim() && lastName.trim()
+            ? 'bg-purple-600 hover:bg-purple-700 text-white'
+            : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+        }`}
+      >
+        Start Tasting
+      </button>
 
-      const canSubmit =
-        state.wineNumber &&
-        wineNum > 0 &&
-        state.currentScore &&
-        parseIntSafe(state.currentScore) >= 1 &&
-        parseIntSafe(state.currentScore) <= 10 &&
-        !alreadyScored;
+      <button
+        onClick={() => setShowAdmin(true)}
+        className="w-full py-2 text-sm text-gray-600 hover:text-gray-800 underline"
+      >
+        Admin Access
+      </button>
+    </div>
+  </div>
+);
+```
 
-      return `
-        <div class="p-6">
-          <h2 class="text-xl font-bold text-gray-800 mb-6">Score a Wine</h2>
+}
 
-          <div class="space-y-6">
+// Main App - After Login
+return (
+<div className="min-h-screen bg-gradient-to-br from-red-50 via-white to-blue-50 p-4">
+<div className="max-w-4xl mx-auto">
+{/* Header */}
+<div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+<div className="flex items-center justify-between mb-4">
+<div className="flex items-center gap-3">
+<Wine className="text-red-600" size={32} />
+<div>
+<h1 className="text-2xl font-bold text-gray-800">Wine Tasting Contest</h1>
+<p className="text-sm text-gray-600">Italy 🇮🇹 vs France 🇫🇷</p>
+</div>
+</div>
+<button
+onClick={handleLogout}
+className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
+>
+<LogOut size={20} />
+<span className="text-sm font-medium">Logout</span>
+</button>
+</div>
+
+```
+      <div className="flex items-center gap-2 p-3 bg-purple-50 rounded-lg border border-purple-200">
+        <User size={20} className="text-purple-600" />
+        <span className="font-semibold text-gray-800">{firstName} {lastName}</span>
+      </div>
+    </div>
+
+    {/* Tabs */}
+    <div className="bg-white rounded-lg shadow-lg mb-6">
+      <div className="flex border-b">
+        <button
+          onClick={() => setCurrentTab('score')}
+          className={`flex-1 py-4 font-semibold transition ${
+            currentTab === 'score'
+              ? 'bg-purple-600 text-white'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          } rounded-tl-lg`}
+        >
+          Score a Wine
+        </button>
+        <button
+          onClick={() => setCurrentTab('review')}
+          className={`flex-1 py-4 font-semibold transition ${
+            currentTab === 'review'
+              ? 'bg-purple-600 text-white'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          } rounded-tr-lg`}
+        >
+          Review My Scores ({Object.keys(scores).length})
+        </button>
+      </div>
+
+      {/* Score Tab */}
+      {currentTab === 'score' && (
+        <div className="p-6">
+          <h2 className="text-xl font-bold text-gray-800 mb-6">Score a Wine</h2>
+          
+          <div className="space-y-6">
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">Wine Number</label>
-              <div class="relative">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Wine Number
+              </label>
+              <div className="relative">
                 <input
-                  id="wineNumber"
                   type="number"
                   min="1"
-                  value="${esc(state.wineNumber)}"
+                  value={wineNumber}
+                  onChange={(e) => setWineNumber(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === '.' || e.key === '-' || e.key === '+' || e.key === 'e') {
+                      e.preventDefault();
+                    }
+                  }}
                   placeholder="Enter wine number"
-                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-center text-2xl font-bold"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-center text-2xl font-bold"
                 />
-                ${wineNum > 0 ? `
-                  <div class="absolute right-4 top-1/2 -translate-y-1/2 text-4xl">
-                    ${isItalian ? "🇮🇹" : isFrench ? "🇫🇷" : ""}
+                {wineNum > 0 && (
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-4xl">
+                    {isItalian ? '🇮🇹' : isFrench ? '🇫🇷' : ''}
                   </div>
-                ` : ""}
+                )}
               </div>
-
-              ${wineNum > 0 ? `
-                <p class="mt-2 text-center text-sm font-medium">
-                  ${isItalian ? `<span class="text-red-600">Italian Wine (Even Number)</span>` : ""}
-                  ${isFrench ? `<span class="text-blue-600">French Wine (Odd Number)</span>` : ""}
+              {wineNum > 0 && (
+                <p className="mt-2 text-center text-sm font-medium">
+                  {isItalian && <span className="text-red-600">Italian Wine (Even Number)</span>}
+                  {isFrench && <span className="text-blue-600">French Wine (Odd Number)</span>}
                 </p>
-              ` : ""}
-
-              ${alreadyScored ? `
-                <p class="mt-2 text-center text-sm text-orange-600 font-medium">
-                  ⚠️ You already scored this wine with ${state.scores[wineNum]}/10. Edit it in "Review My Scores".
+              )}
+              {scores[wineNum] && (
+                <p className="mt-2 text-center text-sm text-orange-600 font-medium">
+                  ⚠️ You already scored this wine with {scores[wineNum]}/10. You can edit it in "Review My Scores".
                 </p>
-              ` : ""}
+              )}
             </div>
 
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">Score (1-10)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Score (1-10)
+              </label>
               <input
-                id="currentScore"
                 type="number"
                 min="1"
                 max="10"
                 step="1"
-                value="${esc(state.currentScore)}"
+                value={currentScore}
+                onChange={(e) => setCurrentScore(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === '.' || e.key === '-' || e.key === '+' || e.key === 'e') {
+                    e.preventDefault();
+                  }
+                }}
                 placeholder="Enter score 1-10"
-                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-center text-2xl font-bold"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-center text-2xl font-bold"
               />
             </div>
 
             <button
-              id="submitScoreBtn"
-              class="w-full py-4 rounded-lg font-bold text-lg transition ${
-                canSubmit
-                  ? "bg-purple-600 hover:bg-purple-700 text-white"
-                  : "bg-gray-300 text-gray-500 cursor-not-allowed"
-              }"
-              ${canSubmit ? "" : "disabled"}
+              onClick={handleScoreSubmit}
+              disabled={!wineNumber || wineNum <= 0 || !currentScore || currentScore < 1 || currentScore > 10}
+              className={`w-full py-4 rounded-lg font-bold text-lg transition ${
+                wineNumber && wineNum > 0 && currentScore && currentScore >= 1 && currentScore <= 10
+                  ? 'bg-purple-600 hover:bg-purple-700 text-white'
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              }`}
             >
               Submit Score
             </button>
           </div>
         </div>
-      `;
-    }
+      )}
 
-    function renderReviewTab(results) {
-      const entries = Object.entries(state.scores)
-        .sort(([a], [b]) => parseIntSafe(a) - parseIntSafe(b));
-
-      const hasScores = entries.length > 0;
-
-      const rows = entries.map(([wineNum, score]) => {
-        const n = parseIntSafe(wineNum);
-        const italian = n % 2 === 0;
-        return `
-          <div class="p-4 rounded-lg border-2 ${italian ? "bg-red-50 border-red-300" : "bg-blue-50 border-blue-300"}">
-            <div class="flex items-center justify-between gap-4 flex-wrap">
-              <div class="flex items-center gap-3 min-w-[180px]">
-                <span class="text-3xl">${italian ? "🇮🇹" : "🇫🇷"}</span>
-                <div>
-                  <p class="font-bold text-lg">Wine #${esc(wineNum)}</p>
-                  <p class="text-sm text-gray-600">${italian ? "Italian" : "French"}</p>
+      {/* Review Tab */}
+      {currentTab === 'review' && (
+        <div className="p-6">
+          <h2 className="text-xl font-bold text-gray-800 mb-4">My Scores</h2>
+          
+          {Object.keys(scores).length === 0 ? (
+            <div className="text-center py-8">
+              <p className="text-gray-600">No wines scored yet</p>
+              <p className="text-sm text-gray-500 mt-2">Go to "Score a Wine" to start tasting!</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {Object.entries(scores)
+                .sort(([a], [b]) => parseInt(a) - parseInt(b))
+                .map(([wineNum, score]) => {
+                  const isItalian = parseInt(wineNum) % 2 === 0;
+                  return (
+                    <div
+                      key={wineNum}
+                      className={`p-4 rounded-lg border-2 ${
+                        isItalian ? 'bg-red-50 border-red-300' : 'bg-blue-50 border-blue-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <span className="text-3xl">{isItalian ? '🇮🇹' : '🇫🇷'}</span>
+                          <div>
+                            <p className="font-bold text-lg">Wine #{wineNum}</p>
+                            <p className="text-sm text-gray-600">
+                              {isItalian ? 'Italian' : 'French'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="number"
+                            min="1"
+                            max="10"
+                            step="1"
+                            value={score}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (val === '' || (parseInt(val) >= 1 && parseInt(val) <= 10)) {
+                                handleScoreUpdate(wineNum, parseInt(val) || score);
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === '.' || e.key === '-' || e.key === '+' || e.key === 'e') {
+                                e.preventDefault();
+                              }
+                            }}
+                            className="w-20 px-3 py-2 border border-gray-300 rounded-lg text-center text-xl font-bold focus:ring-2 focus:ring-purple-500"
+                          />
+                          <button
+                            onClick={() => handleScoreDelete(wineNum)}
+                            className="px-3 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium transition"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          )}
+          
+          {/* Results Summary */}
+          {Object.keys(scores).length > 0 && (
+            <div className="mt-6 pt-6 border-t">
+              <div className="flex items-center gap-2 mb-4">
+                <BarChart3 className="text-purple-600" size={24} />
+                <h3 className="text-lg font-bold text-gray-800">Your Summary</h3>
+              </div>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="p-4 bg-red-50 rounded-lg border-2 border-red-300">
+                  <h4 className="font-bold text-red-800 mb-1">🇮🇹 Italian Wines</h4>
+                  <p className="text-2xl font-bold text-red-600">{results.italian.avg}</p>
+                  <p className="text-sm text-gray-600">{results.italian.count} wines rated</p>
+                </div>
+                <div className="p-4 bg-blue-50 rounded-lg border-2 border-blue-300">
+                  <h4 className="font-bold text-blue-800 mb-1">🇫🇷 French Wines</h4>
+                  <p className="text-2xl font-bold text-blue-600">{results.french.avg}</p>
+                  <p className="text-sm text-gray-600">{results.french.count} wines rated</p>
                 </div>
               </div>
-
-              <div class="flex items-center gap-3">
-                <input
-                  data-score-input="${esc(wineNum)}"
-                  type="number"
-                  min="1"
-                  max="10"
-                  step="1"
-                  value="${esc(score)}"
-                  class="w-20 px-3 py-2 border border-gray-300 rounded-lg text-center text-xl font-bold focus:ring-2 focus:ring-purple-500"
-                />
-                <button
-                  data-delete-btn="${esc(wineNum)}"
-                  class="px-3 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium transition"
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          </div>
-        `;
-      }).join("");
-
-      const bothHaveAvg = results.italian.avg !== "N/A" && results.french.avg !== "N/A";
-      let verdict = "";
-      if (bothHaveAvg) {
-        const ia = parseFloat(results.italian.avg);
-        const fa = parseFloat(results.french.avg);
-        verdict = ia > fa ? "🇮🇹 You preferred Italian wines!"
-               : fa > ia ? "🇫🇷 You preferred French wines!"
-               : "🤝 It's a tie!";
-      }
-
-      return `
-        <div class="p-6">
-          <h2 class="text-xl font-bold text-gray-800 mb-4">My Scores</h2>
-
-          ${!hasScores ? `
-            <div class="text-center py-8">
-              <p class="text-gray-600">No wines scored yet</p>
-              <p class="text-sm text-gray-500 mt-2">Go to "Score a Wine" to start tasting!</p>
-            </div>
-          ` : `
-            <div class="space-y-3">
-              ${rows}
-            </div>
-          `}
-
-          ${hasScores ? `
-            <div class="mt-6 pt-6 border-t">
-              <div class="flex items-center gap-2 mb-4">
-                <i data-lucide="bar-chart-3" class="text-purple-600" style="width:24px;height:24px;"></i>
-                <h3 class="text-lg font-bold text-gray-800">Your Summary</h3>
-              </div>
-
-              <div class="grid md:grid-cols-2 gap-4">
-                <div class="p-4 bg-red-50 rounded-lg border-2 border-red-300">
-                  <h4 class="font-bold text-red-800 mb-1">🇮🇹 Italian Wines</h4>
-                  <p class="text-2xl font-bold text-red-600">${esc(results.italian.avg)}</p>
-                  <p class="text-sm text-gray-600">${esc(results.italian.count)} wines rated</p>
+              {results.italian.avg !== 'N/A' && results.french.avg !== 'N/A' && (
+                <div className="mt-4 p-3 bg-purple-50 rounded-lg border-2 border-purple-300 text-center">
+                  <p className="font-bold text-purple-800">
+                    {parseFloat(results.italian.avg) > parseFloat(results.french.avg)
+                      ? '🇮🇹 You preferred Italian wines!'
+                      : parseFloat(results.french.avg) > parseFloat(results.italian.avg)
+                      ? '🇫🇷 You preferred French wines!'
+                      : '🤝 It\'s a tie!'}
+                  </p>
                 </div>
-                <div class="p-4 bg-blue-50 rounded-lg border-2 border-blue-300">
-                  <h4 class="font-bold text-blue-800 mb-1">🇫🇷 French Wines</h4>
-                  <p class="text-2xl font-bold text-blue-600">${esc(results.french.avg)}</p>
-                  <p class="text-sm text-gray-600">${esc(results.french.count)} wines rated</p>
-                </div>
-              </div>
-
-              ${bothHaveAvg ? `
-                <div class="mt-4 p-3 bg-purple-50 rounded-lg border-2 border-purple-300 text-center">
-                  <p class="font-bold text-purple-800">${esc(verdict)}</p>
-                </div>
-              ` : ""}
+              )}
             </div>
-          ` : ""}
+          )}
         </div>
-      `;
-    }
+      )}
+    </div>
+  </div>
+</div>
+```
 
-    function bindEvents() {
-      if (!state.isLoggedIn) {
-        const firstNameEl = document.getElementById("firstName");
-        const lastNameEl = document.getElementById("lastName");
-        const loginBtn = document.getElementById("loginBtn");
-
-        if (firstNameEl) {
-          firstNameEl.addEventListener("input", (e) => {
-            state.firstName = e.target.value;
-            saveUser();
-            render();
-          });
-          firstNameEl.addEventListener("keydown", (e) => {
-            if (e.key === "Enter") login();
-          });
-        }
-
-        if (lastNameEl) {
-          lastNameEl.addEventListener("input", (e) => {
-            state.lastName = e.target.value;
-            saveUser();
-            render();
-          });
-          lastNameEl.addEventListener("keydown", (e) => {
-            if (e.key === "Enter") login();
-          });
-        }
-
-        if (loginBtn) loginBtn.addEventListener("click", login);
-        return;
-      }
-
-      // Logged in bindings
-      const logoutBtn = document.getElementById("logoutBtn");
-      if (logoutBtn) logoutBtn.addEventListener("click", logout);
-
-      const tabScore = document.getElementById("tabScore");
-      const tabReview = document.getElementById("tabReview");
-      if (tabScore) tabScore.addEventListener("click", () => setTab("score"));
-      if (tabReview) tabReview.addEventListener("click", () => setTab("review"));
-
-      if (state.currentTab === "score") {
-        const wineEl = document.getElementById("wineNumber");
-        const scoreEl = document.getElementById("currentScore");
-        const submitBtn = document.getElementById("submitScoreBtn");
-
-        if (wineEl) {
-          wineEl.addEventListener("input", (e) => {
-            state.wineNumber = e.target.value;
-            render();
-          });
-          wineEl.addEventListener("keydown", (e) => {
-            preventNonIntegerKeys(e);
-            if (e.key === "Enter") submitScore();
-          });
-        }
-
-        if (scoreEl) {
-          scoreEl.addEventListener("input", (e) => {
-            state.currentScore = e.target.value;
-            render();
-          });
-          scoreEl.addEventListener("keydown", (e) => {
-            preventNonIntegerKeys(e);
-            if (e.key === "Enter") submitScore();
-          });
-        }
-
-        if (submitBtn) submitBtn.addEventListener("click", submitScore);
-      }
-
-      if (state.currentTab === "review") {
-        // Score inputs
-        document.querySelectorAll("[data-score-input]").forEach((input) => {
-          input.addEventListener("keydown", preventNonIntegerKeys);
-          input.addEventListener("input", (e) => {
-            const wineNum = e.target.getAttribute("data-score-input");
-            const val = e.target.value;
-            if (val === "") return; // allow clearing without immediate snapback
-            const n = parseIntSafe(val);
-            if (n >= 1 && n <= 10) updateScore(wineNum, n);
-          });
-        });
-
-        // Delete buttons
-        document.querySelectorAll("[data-delete-btn]").forEach((btn) => {
-          btn.addEventListener("click", () => {
-            const wineNum = btn.getAttribute("data-delete-btn");
-            deleteScore(wineNum);
-          });
-        });
-      }
-    }
-
-    // ---------- Boot ----------
-    loadFromStorage();
-    render();
-  </script>
-</body>
-</html>
+);
+}
