@@ -2,257 +2,254 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Wine Tasting</title>
 
-    <!-- Tailwind -->
+    <!-- Tailwind (no build needed) -->
     <script src="https://cdn.tailwindcss.com"></script>
 
-    <style>
-      /* Small safety so you always see something even if Tailwind fails */
-      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
-    </style>
-  </head>
-  <body class="bg-white">
-    <div id="root"></div>
+    <!-- React 18 (UMD) + ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 
-    <!-- React + Babel -->
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <!-- Babel (so we can use JSX in one HTML file) -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <!-- Firebase v8 -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/8.10.1/firebase-app.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/8.10.1/firebase-firestore.min.js"></script>
+    <!-- Firebase (compat for plain HTML) -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+    <style>
+      /* tiny improvement for iOS tap */
+      button, summary { -webkit-tap-highlight-color: transparent; }
+    </style>
+  </head>
+
+  <body class="bg-gradient-to-br from-red-50 via-white to-blue-50 min-h-screen">
+    <div id="root"></div>
 
     <script type="text/babel">
-      // -----------------------------
-      // 1) PASTE YOUR FIREBASE CONFIG HERE
-      // -----------------------------
+      const { useEffect, useMemo, useRef, useState } = React;
+
+      /***********************
+       * 1) FIREBASE CONFIG
+       ***********************/
+      // ✅ Your Firebase config (works on GitHub Pages)
       const firebaseConfig = {
-        // ✅ REQUIRED for centralised voting:
-        // apiKey: "....",
-        // authDomain: "....",
-        // projectId: "....",
-        // storageBucket: "....",
-        // messagingSenderId: "....",
-        // appId: "...."
+        apiKey: "AIzaSyCz7ZMp_scmATXUXbfm4Lu-VQnojknbIrI",
+        authDomain: "wine-tasting-31560.firebaseapp.com",
+        projectId: "wine-tasting-31560",
+        // Use *.appspot.com for storageBucket in plain examples
+        storageBucket: "wine-tasting-31560.appspot.com",
+        messagingSenderId: "229553647848",
+        appId: "1:229553647848:web:1aa7985cf9a4e630ef595d",
       };
 
-      const ADMIN_PASSWORD = "winetasting2025";
-
-      // -----------------------------
-      // 2) SMALL ERROR OVERLAY (so it never goes blank)
-      // -----------------------------
-      function FatalScreen({ title, message, details }) {
-        return (
-          <div className="min-h-screen bg-gradient-to-br from-red-50 via-white to-blue-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-lg shadow-xl p-6 max-w-lg w-full">
-              <h1 className="text-2xl font-bold text-gray-800 mb-2">{title}</h1>
-              <p className="text-gray-700 mb-4">{message}</p>
-              {details ? (
-                <pre className="text-xs bg-gray-50 border border-gray-200 rounded p-3 overflow-auto whitespace-pre-wrap">
-                  {details}
-                </pre>
-              ) : null}
-              <p className="mt-4 text-sm text-gray-600">
-                If you’re using Firebase: make sure you pasted the config and enabled Firestore.
-              </p>
-            </div>
-          </div>
-        );
-      }
-
-      // -----------------------------
-      // 3) SAFE FIREBASE INIT (won’t crash)
-      // -----------------------------
-      function hasFirebaseConfig(cfg) {
-        return !!(cfg && cfg.apiKey && cfg.projectId && cfg.appId);
-      }
-
       let db = null;
-      let firebaseReady = false;
-      let firebaseInitError = "";
+      let firestoreReady = false;
 
       try {
-        if (window.firebase && hasFirebaseConfig(firebaseConfig)) {
-          if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-          db = firebase.firestore();
-          firebaseReady = true;
-        } else {
-          firebaseReady = false;
-        }
+        firebase.initializeApp(firebaseConfig);
+        db = firebase.firestore();
+        firestoreReady = true;
       } catch (e) {
-        firebaseReady = false;
-        firebaseInitError = (e && e.message) ? e.message : String(e);
+        console.error("Firebase init error:", e);
+        firestoreReady = false;
       }
 
-      // -----------------------------
-      // 4) LOCAL FALLBACK STORAGE (so app still works if Firebase missing)
-      // -----------------------------
-      const LS_VOTES_KEY = "wine_votes_v1";
-      const LS_ADMIN_KEY = "wine_admin_settings_v1";
+      /***********************
+       * 2) HELPERS
+       ***********************/
+      const ADMIN_PASSWORD = "winetasting2025";
 
-      function loadLocalVotes() {
-        try {
-          return JSON.parse(localStorage.getItem(LS_VOTES_KEY) || "[]");
-        } catch {
-          return [];
-        }
+      function normalizeName(first, last) {
+        return `${(first || "").trim()} ${(last || "").trim()}`.trim();
       }
 
-      function saveLocalVotes(votes) {
-        try {
-          localStorage.setItem(LS_VOTES_KEY, JSON.stringify(votes));
-        } catch {}
+      // Firestore doc id cannot contain "/" etc. We'll make it safe and stable.
+      function makeUserIdFromName(name) {
+        return name.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
       }
 
-      function loadLocalAdminSettings() {
-        try {
-          return JSON.parse(localStorage.getItem(LS_ADMIN_KEY) || "{}");
-        } catch {
-          return {};
-        }
+      function safeParseInt(v) {
+        const n = parseInt(v, 10);
+        return Number.isFinite(n) ? n : NaN;
       }
 
-      function saveLocalAdminSettings(obj) {
-        try {
-          localStorage.setItem(LS_ADMIN_KEY, JSON.stringify(obj));
-        } catch {}
+      function calculateSplitAveragesFromScores(scoresObj) {
+        const italian = [];
+        const french = [];
+
+        Object.entries(scoresObj || {}).forEach(([wineNumStr, scoreVal]) => {
+          const wineNum = safeParseInt(wineNumStr);
+          const score = safeParseInt(scoreVal);
+          if (!Number.isFinite(wineNum) || !Number.isFinite(score)) return;
+
+          if (wineNum % 2 === 0) italian.push(score);
+          else french.push(score);
+        });
+
+        const avg = (arr) =>
+          arr.length ? (arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(2) : "N/A";
+
+        return {
+          italian: { avg: avg(italian), count: italian.length },
+          french: { avg: avg(french), count: french.length },
+        };
       }
 
-      // -----------------------------
-      // 5) MAIN APP
-      // -----------------------------
-      function WineTastingForm() {
-        // If Firebase scripts failed completely, show a clear message
-        if (!window.React || !window.ReactDOM) {
-          return (
-            <FatalScreen
-              title="React failed to load"
-              message="The React scripts did not load. This is usually a network/ad-blocker issue."
-              details="Try a different network, or disable content blockers for this page."
-            />
-          );
-        }
+      function calculateGlobalFromVotes(allVotes, excludedSet) {
+        const italian = [];
+        const french = [];
 
-        // If Firebase config is missing, the app will run in LOCAL mode (not centralised)
-        const usingCentral = firebaseReady && !!db;
+        (allVotes || []).forEach((vote) => {
+          if (!vote || !vote.name || !vote.scores) return;
+          if (excludedSet && excludedSet.has(vote.name)) return;
 
-        const [firstName, setFirstName] = React.useState("");
-        const [lastName, setLastName] = React.useState("");
-        const [isLoggedIn, setIsLoggedIn] = React.useState(false);
+          Object.entries(vote.scores).forEach(([wineNumStr, scoreVal]) => {
+            const wineNum = safeParseInt(wineNumStr);
+            const score = safeParseInt(scoreVal);
+            if (!Number.isFinite(wineNum) || !Number.isFinite(score)) return;
 
-        const [scores, setScores] = React.useState({});
-        const [currentTab, setCurrentTab] = React.useState("score");
-        const [wineNumber, setWineNumber] = React.useState("");
-        const [currentScore, setCurrentScore] = React.useState("");
+            if (wineNum % 2 === 0) italian.push(score);
+            else french.push(score);
+          });
+        });
 
-        const [allVotes, setAllVotes] = React.useState([]);
-        const [excludedUsers, setExcludedUsers] = React.useState(new Set());
+        const avg = (arr) =>
+          arr.length ? (arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(2) : "N/A";
 
-        const [showAdmin, setShowAdmin] = React.useState(false);
-        const [adminPassword, setAdminPassword] = React.useState("");
+        return {
+          italian: { avg: avg(italian), count: italian.length },
+          french: { avg: avg(french), count: french.length },
+        };
+      }
 
-        const userName = `${firstName.trim()} ${lastName.trim()}`.trim();
-
-        const normalizeDocId = (name) => name.replaceAll("/", "_").trim().slice(0, 200);
-
-        // CENTRAL: live listener
-        React.useEffect(() => {
-          if (!usingCentral) {
-            setAllVotes(loadLocalVotes());
-            return;
-          }
-
-          const unsub = db
-            .collection("votes")
-            .orderBy("updatedAt", "desc")
-            .onSnapshot(
-              (snap) => {
-                const votes = [];
-                snap.forEach((doc) => votes.push({ id: doc.id, ...doc.data() }));
-                setAllVotes(votes);
-              },
-              (err) => console.error("Firestore votes listener error:", err)
-            );
-
-          return () => unsub();
-        }, [usingCentral]);
-
-        // CENTRAL admin settings (excluded users)
-        React.useEffect(() => {
-          if (!usingCentral) {
-            const data = loadLocalAdminSettings();
-            const arr = Array.isArray(data.excludedUsers) ? data.excludedUsers : [];
-            setExcludedUsers(new Set(arr));
-            return;
-          }
-
-          const unsub = db.collection("admin").doc("settings").onSnapshot(
-            (doc) => {
-              const data = doc.exists ? doc.data() : {};
-              const arr = Array.isArray(data.excludedUsers) ? data.excludedUsers : [];
-              setExcludedUsers(new Set(arr));
+      /***********************
+       * 3) FIRESTORE API
+       ***********************/
+      const Votes = {
+        // votes/{userId}: { name, scores, updatedAt }
+        votesCollection() {
+          return db.collection("votes");
+        },
+        adminDoc() {
+          return db.collection("admin").doc("settings");
+        },
+        async upsertVote(name, scores) {
+          if (!firestoreReady) return;
+          const userId = makeUserIdFromName(name) || ("user_" + Date.now());
+          await Votes.votesCollection().doc(userId).set(
+            {
+              name,
+              scores: scores || {},
+              updatedAt: new Date().toISOString(),
             },
-            (err) => console.error("Firestore admin/settings listener error:", err)
+            { merge: true }
           );
-
-          return () => unsub();
-        }, [usingCentral]);
-
-        const handleLogin = async () => {
-          if (!firstName.trim() || !lastName.trim()) return;
-
-          // Load existing user vote if exists
-          try {
-            if (usingCentral) {
-              const docId = normalizeDocId(userName);
-              const doc = await db.collection("votes").doc(docId).get();
-              if (doc.exists) {
-                const data = doc.data();
-                if (data && data.scores && typeof data.scores === "object") setScores(data.scores);
-              }
-            } else {
-              const existing = loadLocalVotes().find((v) => v && v.name === userName);
-              if (existing && existing.scores) setScores(existing.scores);
-            }
-          } catch (e) {
-            console.error("Login load error:", e);
+        },
+        async ensureAdminDoc() {
+          if (!firestoreReady) return;
+          const snap = await Votes.adminDoc().get();
+          if (!snap.exists) {
+            await Votes.adminDoc().set({ excludedUsers: [] }, { merge: true });
           }
+        },
+        async setExcludedUsersArray(arr) {
+          if (!firestoreReady) return;
+          await Votes.adminDoc().set({ excludedUsers: arr }, { merge: true });
+        },
+        onVotesSnapshot(cb) {
+          if (!firestoreReady) return () => {};
+          return Votes.votesCollection()
+            .orderBy("updatedAt", "asc")
+            .onSnapshot((snapshot) => {
+              const votes = [];
+              snapshot.forEach((doc) => votes.push(doc.data()));
+              cb(votes);
+            }, (err) => {
+              console.error("Votes snapshot error:", err);
+            });
+        },
+        onAdminSnapshot(cb) {
+          if (!firestoreReady) return () => {};
+          return Votes.adminDoc().onSnapshot((snap) => {
+            const data = snap.exists ? snap.data() : { excludedUsers: [] };
+            cb(data || { excludedUsers: [] });
+          }, (err) => {
+            console.error("Admin snapshot error:", err);
+          });
+        },
+      };
 
+      /***********************
+       * 4) APP
+       ***********************/
+      function App() {
+        const [firstName, setFirstName] = useState("");
+        const [lastName, setLastName] = useState("");
+        const [isLoggedIn, setIsLoggedIn] = useState(false);
+        const [scores, setScores] = useState({});
+        const [currentTab, setCurrentTab] = useState("score"); // 'score' | 'review'
+        const [wineNumber, setWineNumber] = useState("");
+        const [currentScore, setCurrentScore] = useState("");
+
+        // Centralised data
+        const [allVotes, setAllVotes] = useState([]); // from Firestore
+        const [excludedUsers, setExcludedUsers] = useState(new Set()); // from Firestore admin doc
+
+        // Admin UI
+        const [showAdmin, setShowAdmin] = useState(false);
+        const [adminPassword, setAdminPassword] = useState("");
+
+        const userName = useMemo(() => normalizeName(firstName, lastName), [firstName, lastName]);
+        const localResults = useMemo(() => calculateSplitAveragesFromScores(scores), [scores]);
+        const globalResults = useMemo(() => calculateGlobalFromVotes(allVotes, excludedUsers), [allVotes, excludedUsers]);
+
+        const wineNum = safeParseInt(wineNumber);
+        const isItalian = Number.isFinite(wineNum) && wineNum > 0 && wineNum % 2 === 0;
+        const isFrench = Number.isFinite(wineNum) && wineNum > 0 && wineNum % 2 === 1;
+
+        // Subscribe to Firestore (shared data) immediately
+        useEffect(() => {
+          if (!firestoreReady) return;
+
+          let unsubVotes = () => {};
+          let unsubAdmin = () => {};
+
+          (async () => {
+            await Votes.ensureAdminDoc();
+
+            unsubVotes = Votes.onVotesSnapshot((votes) => setAllVotes(votes));
+            unsubAdmin = Votes.onAdminSnapshot((data) => {
+              const arr = Array.isArray(data?.excludedUsers) ? data.excludedUsers : [];
+              setExcludedUsers(new Set(arr));
+            });
+          })();
+
+          return () => {
+            try { unsubVotes(); } catch {}
+            try { unsubAdmin(); } catch {}
+          };
+        }, []);
+
+        // Load existing vote on login (if any)
+        const handleLogin = () => {
+          if (!userName) return;
+          const existing = allVotes.find((v) => v?.name === userName);
+          if (existing && existing.scores) setScores(existing.scores);
           setIsLoggedIn(true);
         };
 
+        // Save to Firestore when logging out (centralised + persistent)
         const handleLogout = async () => {
-          // Save vote
-          try {
-            if (Object.keys(scores).length > 0 && userName) {
-              const userVote = {
-                name: userName,
-                scores: { ...scores },
-                timestampISO: new Date().toISOString(),
-              };
-
-              if (usingCentral) {
-                const docId = normalizeDocId(userName);
-                await db.collection("votes").doc(docId).set(
-                  {
-                    ...userVote,
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                  },
-                  { merge: true }
-                );
-              } else {
-                const prev = loadLocalVotes();
-                const filtered = prev.filter((v) => v && v.name !== userName);
-                const next = [{ ...userVote, updatedAtLocal: Date.now() }, ...filtered];
-                saveLocalVotes(next);
-                setAllVotes(next);
-              }
+          if (userName && Object.keys(scores).length > 0) {
+            try {
+              await Votes.upsertVote(userName, scores);
+            } catch (e) {
+              console.error("Error saving vote:", e);
+              alert("Could not save votes. Check Firestore Rules (permissions).");
             }
-          } catch (e) {
-            console.error("Logout save error:", e);
           }
 
           setIsLoggedIn(false);
@@ -264,172 +261,129 @@
           setCurrentTab("score");
         };
 
+        // Also auto-save periodically so reloading doesn't lose current session before logout
+        const autosaveTimer = useRef(null);
+        useEffect(() => {
+          if (!firestoreReady) return;
+          if (!isLoggedIn) return;
+          if (!userName) return;
+
+          // clear previous timer
+          if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+
+          // autosave 1s after last change
+          autosaveTimer.current = setTimeout(async () => {
+            if (Object.keys(scores).length === 0) return;
+            try {
+              await Votes.upsertVote(userName, scores);
+            } catch (e) {
+              console.error("Autosave failed:", e);
+            }
+          }, 1000);
+
+          return () => {
+            if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+          };
+        }, [scores, isLoggedIn, userName]);
+
         const handleScoreSubmit = () => {
-          const wineNum = parseInt(wineNumber, 10);
-          const score = parseInt(currentScore, 10);
-          if (wineNum > 0 && score >= 1 && score <= 10) {
-            setScores((prev) => ({ ...prev, [wineNum]: score }));
+          const wn = safeParseInt(wineNumber);
+          const sc = safeParseInt(currentScore);
+          if (Number.isFinite(wn) && wn > 0 && Number.isFinite(sc) && sc >= 1 && sc <= 10) {
+            setScores((prev) => ({ ...prev, [wn]: sc }));
             setWineNumber("");
             setCurrentScore("");
           }
         };
 
-        const handleScoreUpdate = (wineNum, newScore) => {
-          if (newScore >= 1 && newScore <= 10) {
-            setScores((prev) => ({ ...prev, [wineNum]: parseInt(newScore, 10) }));
+        const handleScoreUpdate = (wineNumKey, newScore) => {
+          const sc = safeParseInt(newScore);
+          if (Number.isFinite(sc) && sc >= 1 && sc <= 10) {
+            setScores((prev) => ({ ...prev, [wineNumKey]: sc }));
           }
         };
 
-        const handleScoreDelete = (wineNum) => {
+        const handleScoreDelete = (wineNumKey) => {
           setScores((prev) => {
             const next = { ...prev };
-            delete next[wineNum];
+            delete next[wineNumKey];
             return next;
           });
         };
 
-        const calculateResults = () => {
-          const italianScores = [];
-          const frenchScores = [];
-
-          Object.entries(scores).forEach(([w, s]) => {
-            const num = parseInt(w, 10);
-            if (num % 2 === 0) italianScores.push(s);
-            else frenchScores.push(s);
-          });
-
-          const italianAvg =
-            italianScores.length > 0
-              ? (italianScores.reduce((a, b) => a + b, 0) / italianScores.length).toFixed(2)
-              : "N/A";
-          const frenchAvg =
-            frenchScores.length > 0
-              ? (frenchScores.reduce((a, b) => a + b, 0) / frenchScores.length).toFixed(2)
-              : "N/A";
-
-          return {
-            italian: { avg: italianAvg, count: italianScores.length },
-            french: { avg: frenchAvg, count: frenchScores.length },
-          };
-        };
-
-        const calculateGlobalResults = () => {
-          const allItalianScores = [];
-          const allFrenchScores = [];
-
-          allVotes.forEach((vote) => {
-            if (!vote || !vote.name || !vote.scores) return;
-            if (excludedUsers.has(vote.name)) return;
-
-            Object.entries(vote.scores).forEach(([w, s]) => {
-              const num = parseInt(w, 10);
-              if (num % 2 === 0) allItalianScores.push(s);
-              else allFrenchScores.push(s);
-            });
-          });
-
-          const italianAvg =
-            allItalianScores.length > 0
-              ? (allItalianScores.reduce((a, b) => a + b, 0) / allItalianScores.length).toFixed(2)
-              : "N/A";
-          const frenchAvg =
-            allFrenchScores.length > 0
-              ? (allFrenchScores.reduce((a, b) => a + b, 0) / allFrenchScores.length).toFixed(2)
-              : "N/A";
-
-          return {
-            italian: { avg: italianAvg, count: allItalianScores.length },
-            french: { avg: frenchAvg, count: allFrenchScores.length },
-          };
-        };
-
         const toggleUserExclusion = async (name) => {
-          try {
-            const next = new Set(excludedUsers);
-            if (next.has(name)) next.delete(name);
-            else next.add(name);
+          const next = new Set(excludedUsers);
+          if (next.has(name)) next.delete(name);
+          else next.add(name);
 
-            if (usingCentral) {
-              await db.collection("admin").doc("settings").set(
-                {
-                  excludedUsers: Array.from(next),
-                  updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                },
-                { merge: true }
-              );
-            } else {
-              saveLocalAdminSettings({ excludedUsers: Array.from(next), updatedAtLocal: Date.now() });
-              setExcludedUsers(next);
-            }
+          // Update local immediately
+          setExcludedUsers(next);
+
+          // Persist to Firestore so it stays after refresh
+          try {
+            await Votes.setExcludedUsersArray(Array.from(next));
           } catch (e) {
-            console.error("Toggle exclusion error:", e);
+            console.error("Failed to save exclusions:", e);
+            alert("Could not save exclusions. Check Firestore Rules (permissions).");
           }
         };
 
-        const results = calculateResults();
-        const globalResults = calculateGlobalResults();
-
-        const wineNum = parseInt(wineNumber, 10);
-        const isItalian = wineNum > 0 && wineNum % 2 === 0;
-        const isFrench = wineNum > 0 && wineNum % 2 === 1;
-
-        // If Firebase init actually threw, show it clearly
-        if (!usingCentral && firebaseInitError) {
-          return (
-            <FatalScreen
-              title="Firebase initialization error"
-              message="Your page would have been blank before — now you can see why."
-              details={firebaseInitError}
-            />
-          );
-        }
-
-        // ADMIN PANEL
+        /***********************
+         * ADMIN SCREEN
+         ***********************/
         if (showAdmin) {
           if (adminPassword !== ADMIN_PASSWORD) {
             return (
-              <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-4">
+              <div className="min-h-screen flex items-center justify-center p-4">
                 <div className="bg-white rounded-lg shadow-xl p-8 max-w-md w-full">
                   <h1 className="text-2xl font-bold text-gray-800 mb-2 text-center">Admin Access</h1>
-                  <p className="text-center text-sm text-gray-600 mb-6">
-                    Mode: <span className="font-semibold">{usingCentral ? "Centralised (all phones)" : "Local (this device only)"}</span>
-                  </p>
 
-                  {!usingCentral && (
-                    <div className="mb-5 p-3 rounded border border-amber-300 bg-amber-50 text-amber-800 text-sm">
-                      You are in LOCAL mode because Firebase config is not set. Paste your Firebase config in the file to make votes centralised.
+                  <div className="mt-4 p-3 rounded-lg border-2 text-sm"
+                       className={"mt-4 p-3 rounded-lg border-2 text-sm " + (firestoreReady ? "bg-green-50 border-green-200 text-green-800" : "bg-yellow-50 border-yellow-200 text-yellow-800")}>
+                    <div className="font-semibold">
+                      Mode: {firestoreReady ? "Centralised (all phones)" : "Local (this device only)"}
                     </div>
-                  )}
+                    {!firestoreReady && (
+                      <div className="mt-1">
+                        Firebase is not connected. Admin can’t see other phones.
+                      </div>
+                    )}
+                  </div>
 
                   <input
                     type="password"
                     value={adminPassword}
                     onChange={(e) => setAdminPassword(e.target.value)}
                     placeholder="Enter admin password"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent mb-4"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent my-4"
                   />
+
                   <button
                     onClick={() => setShowAdmin(false)}
                     className="w-full py-3 bg-gray-300 hover:bg-gray-400 text-gray-800 rounded-lg font-medium"
                   >
                     Back to Login
                   </button>
+
+                  <p className="text-xs text-gray-500 mt-4">
+                    If you see “permissions” errors later, update Firestore Rules in Firebase Console.
+                  </p>
                 </div>
               </div>
             );
           }
 
-          const includedCount = allVotes.filter((v) => v && v.name && !excludedUsers.has(v.name)).length;
+          const includedCount = allVotes.filter((v) => v?.name && !excludedUsers.has(v.name)).length;
 
           return (
-            <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-4">
+            <div className="min-h-screen p-4 bg-gradient-to-br from-gray-50 to-gray-100">
               <div className="max-w-6xl mx-auto">
                 <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
                   <div className="flex items-center justify-between">
                     <div>
                       <h1 className="text-2xl font-bold text-gray-800">Admin Dashboard</h1>
                       <p className="text-sm text-gray-600 mt-1">
-                        Mode: <span className="font-semibold">{usingCentral ? "Centralised (all phones)" : "Local (this device only)"}</span>
+                        Mode: <span className="font-semibold">{firestoreReady ? "Centralised (all phones)" : "Local"}</span>
                       </p>
                     </div>
                     <button
@@ -442,16 +396,12 @@
                       Exit Admin
                     </button>
                   </div>
-
-                  {!usingCentral && (
-                    <div className="mt-4 p-3 rounded border border-amber-300 bg-amber-50 text-amber-800 text-sm">
-                      You are in LOCAL mode. To see votes from other phones, paste Firebase config (and enable Firestore).
-                    </div>
-                  )}
                 </div>
 
+                {/* Global Results */}
                 <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
                   <h2 className="text-xl font-bold text-gray-800 mb-4">Overall Results (All Votes)</h2>
+
                   <div className="grid md:grid-cols-2 gap-4 mb-4">
                     <div className="p-6 bg-red-50 rounded-lg border-2 border-red-300">
                       <h3 className="font-bold text-red-800 mb-2">🇮🇹 Italian Wines</h3>
@@ -464,6 +414,7 @@
                       <p className="text-sm text-gray-600">{globalResults.french.count} total votes</p>
                     </div>
                   </div>
+
                   {globalResults.italian.avg !== "N/A" && globalResults.french.avg !== "N/A" && (
                     <div className="p-4 bg-purple-50 rounded-lg border-2 border-purple-300 text-center">
                       <p className="text-lg font-bold text-purple-800">
@@ -477,6 +428,7 @@
                   )}
                 </div>
 
+                {/* Individual Participants */}
                 <div className="bg-white rounded-lg shadow-lg p-6">
                   <h2 className="text-xl font-bold text-gray-800 mb-4">
                     Individual Participants ({includedCount} included / {allVotes.length} total)
@@ -487,55 +439,40 @@
                   ) : (
                     <div className="space-y-4">
                       {allVotes.map((vote, index) => {
-                        const isExcluded = vote?.name ? excludedUsers.has(vote.name) : false;
+                        const name = vote?.name || "(unknown)";
+                        const isExcluded = excludedUsers.has(name);
 
-                        const userResults = {
-                          italian: { scores: [], avg: "N/A" },
-                          french: { scores: [], avg: "N/A" },
-                        };
-
-                        if (vote && vote.scores) {
-                          Object.entries(vote.scores).forEach(([w, s]) => {
-                            if (parseInt(w, 10) % 2 === 0) userResults.italian.scores.push(s);
-                            else userResults.french.scores.push(s);
-                          });
-                        }
-
-                        if (userResults.italian.scores.length > 0) {
-                          userResults.italian.avg = (
-                            userResults.italian.scores.reduce((a, b) => a + b, 0) / userResults.italian.scores.length
-                          ).toFixed(2);
-                        }
-                        if (userResults.french.scores.length > 0) {
-                          userResults.french.avg = (
-                            userResults.french.scores.reduce((a, b) => a + b, 0) / userResults.french.scores.length
-                          ).toFixed(2);
-                        }
+                        const userResults = calculateSplitAveragesFromScores(vote?.scores || {});
 
                         return (
                           <div
-                            key={vote?.id || index}
-                            className={`border-2 rounded-lg p-4 ${
-                              isExcluded ? "border-gray-300 bg-gray-50 opacity-60" : "border-gray-200 bg-white"
-                            }`}
+                            key={index}
+                            className={
+                              "border-2 rounded-lg p-4 " +
+                              (isExcluded ? "border-gray-300 bg-gray-50 opacity-60" : "border-gray-200 bg-white")
+                            }
                           >
                             <div className="flex items-center justify-between mb-3">
                               <div className="flex items-center gap-3">
                                 <button
-                                  onClick={() => vote?.name && toggleUserExclusion(vote.name)}
-                                  className={`w-6 h-6 rounded border-2 flex items-center justify-center transition ${
-                                    isExcluded ? "bg-gray-300 border-gray-400" : "bg-green-500 border-green-600"
-                                  }`}
+                                  onClick={() => toggleUserExclusion(name)}
+                                  className={
+                                    "w-6 h-6 rounded border-2 flex items-center justify-center transition " +
+                                    (isExcluded ? "bg-gray-300 border-gray-400" : "bg-green-500 border-green-600")
+                                  }
+                                  title={isExcluded ? "Excluded from totals" : "Included in totals"}
                                 >
                                   {!isExcluded && <span className="text-white text-sm">✓</span>}
                                 </button>
+
                                 <h3 className="font-bold text-lg text-gray-800">
-                                  {vote?.name || "Unnamed"}
+                                  {name}
                                   {isExcluded && <span className="ml-2 text-sm text-red-600">(Excluded)</span>}
                                 </h3>
                               </div>
+
                               <span className="text-sm text-gray-500">
-                                {vote?.scores ? Object.keys(vote.scores).length : 0} wines rated
+                                {Object.keys(vote?.scores || {}).length} wines rated
                               </span>
                             </div>
 
@@ -543,12 +480,12 @@
                               <div className="p-3 bg-red-50 rounded border border-red-200">
                                 <p className="text-sm font-medium text-red-800">🇮🇹 Italian Avg</p>
                                 <p className="text-xl font-bold text-red-600">{userResults.italian.avg}</p>
-                                <p className="text-xs text-gray-600">{userResults.italian.scores.length} wines</p>
+                                <p className="text-xs text-gray-600">{userResults.italian.count} wines</p>
                               </div>
                               <div className="p-3 bg-blue-50 rounded border border-blue-200">
                                 <p className="text-sm font-medium text-blue-800">🇫🇷 French Avg</p>
                                 <p className="text-xl font-bold text-blue-600">{userResults.french.avg}</p>
-                                <p className="text-xs text-gray-600">{userResults.french.scores.length} wines</p>
+                                <p className="text-xs text-gray-600">{userResults.french.count} wines</p>
                               </div>
                             </div>
 
@@ -556,24 +493,22 @@
                               <summary className="cursor-pointer text-sm text-purple-600 hover:text-purple-700 font-medium">
                                 View individual scores
                               </summary>
+
                               <div className="mt-2 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
-                                {vote?.scores
-                                  ? Object.entries(vote.scores)
-                                      .sort(([a], [b]) => parseInt(a, 10) - parseInt(b, 10))
-                                      .map(([w, s]) => (
-                                        <div
-                                          key={w}
-                                          className={`p-2 rounded text-center ${
-                                            parseInt(w, 10) % 2 === 0
-                                              ? "bg-red-100 border border-red-300"
-                                              : "bg-blue-100 border border-blue-300"
-                                          }`}
-                                        >
-                                          <p className="text-xs font-medium">Wine {w}</p>
-                                          <p className="text-lg font-bold">{s}</p>
-                                        </div>
-                                      ))
-                                  : null}
+                                {Object.entries(vote?.scores || {})
+                                  .sort(([a], [b]) => safeParseInt(a) - safeParseInt(b))
+                                  .map(([w, s]) => (
+                                    <div
+                                      key={w}
+                                      className={
+                                        "p-2 rounded text-center border " +
+                                        (safeParseInt(w) % 2 === 0 ? "bg-red-100 border-red-300" : "bg-blue-100 border-blue-300")
+                                      }
+                                    >
+                                      <p className="text-xs font-medium">Wine {w}</p>
+                                      <p className="text-lg font-bold">{s}</p>
+                                    </div>
+                                  ))}
                               </div>
                             </details>
                           </div>
@@ -587,25 +522,34 @@
           );
         }
 
-        // LOGIN SCREEN
+        /***********************
+         * LOGIN SCREEN
+         ***********************/
         if (!isLoggedIn) {
           return (
-            <div className="min-h-screen bg-gradient-to-br from-red-50 via-white to-blue-50 flex items-center justify-center p-4">
+            <div className="min-h-screen flex items-center justify-center p-4">
               <div className="bg-white rounded-lg shadow-xl p-8 max-w-md w-full">
-                <div className="flex items-center justify-center gap-3 mb-6">
-                  <span className="text-4xl">🍷</span>
+                <div className="flex items-center justify-center gap-3 mb-3">
+                  <span className="text-3xl">🍷</span>
                   <h1 className="text-3xl font-bold text-gray-800">Wine Tasting</h1>
-                  <span className="text-4xl">🍷</span>
+                  <span className="text-3xl">🍷</span>
                 </div>
 
-                <p className="text-center text-gray-600 mb-4">Italy 🇮🇹 vs France 🇫🇷</p>
+                <p className="text-center text-gray-600 mb-6">Italy 🇮🇹 vs France 🇫🇷</p>
 
-                <div className={`mb-6 p-3 rounded border text-sm ${usingCentral ? "border-green-200 bg-green-50 text-green-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
-                  Mode: <span className="font-semibold">{usingCentral ? "Centralised (all phones)" : "Local (this device only)"}</span>
-                  {!usingCentral && (
-                    <div className="mt-1">
-                      Paste Firebase config to make admin see everyone’s votes.
-                    </div>
+                <div
+                  className={
+                    "mb-6 p-3 rounded-lg border-2 text-sm " +
+                    (firestoreReady ? "bg-green-50 border-green-200 text-green-800" : "bg-yellow-50 border-yellow-200 text-yellow-800")
+                  }
+                >
+                  <div className="font-semibold">
+                    Mode: {firestoreReady ? "Centralised (all phones)" : "Local (this device only)"}
+                  </div>
+                  {firestoreReady ? (
+                    <div className="mt-1">Votes are shared across phones and saved after reload.</div>
+                  ) : (
+                    <div className="mt-1">Firebase not connected — votes won’t be shared.</div>
                   )}
                 </div>
 
@@ -622,6 +566,7 @@
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                     />
                   </div>
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Last Name <span className="text-red-500">*</span>
@@ -639,11 +584,12 @@
                 <button
                   onClick={handleLogin}
                   disabled={!firstName.trim() || !lastName.trim()}
-                  className={`w-full py-3 rounded-lg font-bold text-lg transition mb-3 ${
-                    firstName.trim() && lastName.trim()
+                  className={
+                    "w-full py-3 rounded-lg font-bold text-lg transition mb-3 " +
+                    (firstName.trim() && lastName.trim()
                       ? "bg-purple-600 hover:bg-purple-700 text-white"
-                      : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                  }`}
+                      : "bg-gray-300 text-gray-500 cursor-not-allowed")
+                  }
                 >
                   Start Tasting
                 </button>
@@ -659,14 +605,17 @@
           );
         }
 
-        // MAIN APP
+        /***********************
+         * MAIN APP (AFTER LOGIN)
+         ***********************/
         return (
-          <div className="min-h-screen bg-gradient-to-br from-red-50 via-white to-blue-50 p-4">
+          <div className="min-h-screen p-4">
             <div className="max-w-4xl mx-auto">
+              {/* Header */}
               <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
-                    <span className="text-3xl">🍷</span>
+                    <span className="text-2xl">🍷</span>
                     <div>
                       <h1 className="text-2xl font-bold text-gray-800">Wine Tasting Contest</h1>
                       <p className="text-sm text-gray-600">Italy 🇮🇹 vs France 🇫🇷</p>
@@ -682,41 +631,40 @@
                   </button>
                 </div>
 
-                <div className="flex items-center justify-between gap-3 p-3 bg-purple-50 rounded-lg border border-purple-200">
-                  <div className="flex items-center gap-2">
-                    <span className="text-purple-600">👤</span>
-                    <span className="font-semibold text-gray-800">{userName}</span>
-                  </div>
-                  <span className={`text-xs px-2 py-1 rounded border ${usingCentral ? "border-green-200 bg-green-50 text-green-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
-                    {usingCentral ? "Centralised" : "Local"}
+                <div className="flex items-center gap-2 p-3 bg-purple-50 rounded-lg border border-purple-200">
+                  <span className="text-lg">👤</span>
+                  <span className="font-semibold text-gray-800">{firstName} {lastName}</span>
+                  <span className="ml-auto text-xs text-gray-600">
+                    {firestoreReady ? "Centralised saving ON" : "Local only"}
                   </span>
                 </div>
               </div>
 
+              {/* Tabs */}
               <div className="bg-white rounded-lg shadow-lg mb-6">
                 <div className="flex border-b">
                   <button
                     onClick={() => setCurrentTab("score")}
-                    className={`flex-1 py-4 font-semibold transition ${
-                      currentTab === "score"
-                        ? "bg-purple-600 text-white"
-                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                    } rounded-tl-lg`}
+                    className={
+                      "flex-1 py-4 font-semibold transition rounded-tl-lg " +
+                      (currentTab === "score" ? "bg-purple-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")
+                    }
                   >
                     Score a Wine
                   </button>
+
                   <button
                     onClick={() => setCurrentTab("review")}
-                    className={`flex-1 py-4 font-semibold transition ${
-                      currentTab === "review"
-                        ? "bg-purple-600 text-white"
-                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                    } rounded-tr-lg`}
+                    className={
+                      "flex-1 py-4 font-semibold transition rounded-tr-lg " +
+                      (currentTab === "review" ? "bg-purple-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")
+                    }
                   >
                     Review My Scores ({Object.keys(scores).length})
                   </button>
                 </div>
 
+                {/* Score Tab */}
                 {currentTab === "score" && (
                   <div className="p-6">
                     <h2 className="text-xl font-bold text-gray-800 mb-6">Score a Wine</h2>
@@ -724,6 +672,7 @@
                     <div className="space-y-6">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">Wine Number</label>
+
                         <div className="relative">
                           <input
                             type="number"
@@ -733,19 +682,20 @@
                             value={wineNumber}
                             onChange={(e) => setWineNumber(e.target.value)}
                             onKeyDown={(e) => {
-                              if (e.key === "." || e.key === "-" || e.key === "+" || e.key === "e") e.preventDefault();
+                              if ([".", "-", "+", "e", "E"].includes(e.key)) e.preventDefault();
                             }}
                             placeholder="Enter wine number"
                             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-center text-2xl font-bold"
                           />
-                          {wineNum > 0 && (
+
+                          {Number.isFinite(wineNum) && wineNum > 0 && (
                             <div className="absolute right-4 top-1/2 -translate-y-1/2 text-4xl">
                               {isItalian ? "🇮🇹" : isFrench ? "🇫🇷" : ""}
                             </div>
                           )}
                         </div>
 
-                        {wineNum > 0 && (
+                        {Number.isFinite(wineNum) && wineNum > 0 && (
                           <p className="mt-2 text-center text-sm font-medium">
                             {isItalian && <span className="text-red-600">Italian Wine (Even Number)</span>}
                             {isFrench && <span className="text-blue-600">French Wine (Odd Number)</span>}
@@ -754,7 +704,7 @@
 
                         {scores[wineNum] && (
                           <p className="mt-2 text-center text-sm text-orange-600 font-medium">
-                            ⚠️ You already scored this wine with {scores[wineNum]}/10. You can edit it in "Review My Scores".
+                            ⚠️ You already scored this wine with {scores[wineNum]}/10. Submitting will update it.
                           </p>
                         )}
                       </div>
@@ -771,7 +721,7 @@
                           value={currentScore}
                           onChange={(e) => setCurrentScore(e.target.value)}
                           onKeyDown={(e) => {
-                            if (e.key === "." || e.key === "-" || e.key === "+" || e.key === "e") e.preventDefault();
+                            if ([".", "-", "+", "e", "E"].includes(e.key)) e.preventDefault();
                           }}
                           placeholder="Enter score 1-10"
                           className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-center text-2xl font-bold"
@@ -780,23 +730,33 @@
 
                       <button
                         onClick={handleScoreSubmit}
-                        disabled={!wineNumber || wineNum <= 0 || !currentScore || currentScore < 1 || currentScore > 10}
-                        className={`w-full py-4 rounded-lg font-bold text-lg transition ${
-                          wineNumber && wineNum > 0 && currentScore && currentScore >= 1 && currentScore <= 10
+                        disabled={
+                          !wineNumber ||
+                          !Number.isFinite(wineNum) ||
+                          wineNum <= 0 ||
+                          !currentScore ||
+                          safeParseInt(currentScore) < 1 ||
+                          safeParseInt(currentScore) > 10
+                        }
+                        className={
+                          "w-full py-4 rounded-lg font-bold text-lg transition " +
+                          (wineNumber &&
+                          Number.isFinite(wineNum) &&
+                          wineNum > 0 &&
+                          currentScore &&
+                          safeParseInt(currentScore) >= 1 &&
+                          safeParseInt(currentScore) <= 10
                             ? "bg-purple-600 hover:bg-purple-700 text-white"
-                            : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                        }`}
+                            : "bg-gray-300 text-gray-500 cursor-not-allowed")
+                        }
                       >
                         Submit Score
                       </button>
-
-                      <p className="text-xs text-gray-500 text-center">
-                        Your vote is saved when you log out. (You can also just keep the tab open.)
-                      </p>
                     </div>
                   </div>
                 )}
 
+                {/* Review Tab */}
                 {currentTab === "review" && (
                   <div className="p-6">
                     <h2 className="text-xl font-bold text-gray-800 mb-4">My Scores</h2>
@@ -804,25 +764,28 @@
                     {Object.keys(scores).length === 0 ? (
                       <div className="text-center py-8">
                         <p className="text-gray-600">No wines scored yet</p>
-                        <p className="text-sm text-gray-500 mt-2">Go to "Score a Wine" to start tasting!</p>
+                        <p className="text-sm text-gray-500 mt-2">Go to “Score a Wine” to start tasting!</p>
                       </div>
                     ) : (
                       <div className="space-y-3">
                         {Object.entries(scores)
-                          .sort(([a], [b]) => parseInt(a, 10) - parseInt(b, 10))
-                          .map(([w, s]) => {
-                            const it = parseInt(w, 10) % 2 === 0;
+                          .sort(([a], [b]) => safeParseInt(a) - safeParseInt(b))
+                          .map(([wn, sc]) => {
+                            const italian = safeParseInt(wn) % 2 === 0;
                             return (
                               <div
-                                key={w}
-                                className={`p-4 rounded-lg border-2 ${it ? "bg-red-50 border-red-300" : "bg-blue-50 border-blue-300"}`}
+                                key={wn}
+                                className={
+                                  "p-4 rounded-lg border-2 " +
+                                  (italian ? "bg-red-50 border-red-300" : "bg-blue-50 border-blue-300")
+                                }
                               >
                                 <div className="flex items-center justify-between">
                                   <div className="flex items-center gap-3">
-                                    <span className="text-3xl">{it ? "🇮🇹" : "🇫🇷"}</span>
+                                    <span className="text-3xl">{italian ? "🇮🇹" : "🇫🇷"}</span>
                                     <div>
-                                      <p className="font-bold text-lg">Wine #{w}</p>
-                                      <p className="text-sm text-gray-600">{it ? "Italian" : "French"}</p>
+                                      <p className="font-bold text-lg">Wine #{wn}</p>
+                                      <p className="text-sm text-gray-600">{italian ? "Italian" : "French"}</p>
                                     </div>
                                   </div>
 
@@ -834,20 +797,22 @@
                                       min="1"
                                       max="10"
                                       step="1"
-                                      value={s}
+                                      value={sc}
                                       onChange={(e) => {
                                         const val = e.target.value;
-                                        if (val === "" || (parseInt(val, 10) >= 1 && parseInt(val, 10) <= 10)) {
-                                          handleScoreUpdate(w, parseInt(val, 10) || s);
+                                        const n = safeParseInt(val);
+                                        if (val === "" || (Number.isFinite(n) && n >= 1 && n <= 10)) {
+                                          handleScoreUpdate(wn, val === "" ? sc : n);
                                         }
                                       }}
                                       onKeyDown={(e) => {
-                                        if (e.key === "." || e.key === "-" || e.key === "+" || e.key === "e") e.preventDefault();
+                                        if ([".", "-", "+", "e", "E"].includes(e.key)) e.preventDefault();
                                       }}
                                       className="w-20 px-3 py-2 border border-gray-300 rounded-lg text-center text-xl font-bold focus:ring-2 focus:ring-purple-500"
                                     />
+
                                     <button
-                                      onClick={() => handleScoreDelete(w)}
+                                      onClick={() => handleScoreDelete(wn)}
                                       className="px-3 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium transition"
                                     >
                                       Delete
@@ -860,37 +825,43 @@
                       </div>
                     )}
 
+                    {/* Summary */}
                     {Object.keys(scores).length > 0 && (
                       <div className="mt-6 pt-6 border-t">
                         <div className="flex items-center gap-2 mb-4">
-                          <span className="text-purple-600">📊</span>
+                          <span className="text-xl">📊</span>
                           <h3 className="text-lg font-bold text-gray-800">Your Summary</h3>
                         </div>
 
                         <div className="grid md:grid-cols-2 gap-4">
                           <div className="p-4 bg-red-50 rounded-lg border-2 border-red-300">
                             <h4 className="font-bold text-red-800 mb-1">🇮🇹 Italian Wines</h4>
-                            <p className="text-2xl font-bold text-red-600">{results.italian.avg}</p>
-                            <p className="text-sm text-gray-600">{results.italian.count} wines rated</p>
+                            <p className="text-2xl font-bold text-red-600">{localResults.italian.avg}</p>
+                            <p className="text-sm text-gray-600">{localResults.italian.count} wines rated</p>
                           </div>
+
                           <div className="p-4 bg-blue-50 rounded-lg border-2 border-blue-300">
                             <h4 className="font-bold text-blue-800 mb-1">🇫🇷 French Wines</h4>
-                            <p className="text-2xl font-bold text-blue-600">{results.french.avg}</p>
-                            <p className="text-sm text-gray-600">{results.french.count} wines rated</p>
+                            <p className="text-2xl font-bold text-blue-600">{localResults.french.avg}</p>
+                            <p className="text-sm text-gray-600">{localResults.french.count} wines rated</p>
                           </div>
                         </div>
 
-                        {results.italian.avg !== "N/A" && results.french.avg !== "N/A" && (
+                        {localResults.italian.avg !== "N/A" && localResults.french.avg !== "N/A" && (
                           <div className="mt-4 p-3 bg-purple-50 rounded-lg border-2 border-purple-300 text-center">
                             <p className="font-bold text-purple-800">
-                              {parseFloat(results.italian.avg) > parseFloat(results.french.avg)
+                              {parseFloat(localResults.italian.avg) > parseFloat(localResults.french.avg)
                                 ? "🇮🇹 You preferred Italian wines!"
-                                : parseFloat(results.french.avg) > parseFloat(results.italian.avg)
+                                : parseFloat(localResults.french.avg) > parseFloat(localResults.italian.avg)
                                 ? "🇫🇷 You preferred French wines!"
                                 : "🤝 It's a tie!"}
                             </p>
                           </div>
                         )}
+
+                        <div className="mt-4 text-xs text-gray-500">
+                          Tip: Your votes are auto-saved {firestoreReady ? "to the shared database" : "locally"}.
+                        </div>
                       </div>
                     )}
                   </div>
@@ -901,18 +872,9 @@
         );
       }
 
-      // Mount safely (and show clear error if anything unexpected happens)
-      try {
-        ReactDOM.createRoot(document.getElementById("root")).render(<WineTastingForm />);
-      } catch (e) {
-        const msg = (e && e.message) ? e.message : String(e);
-        document.getElementById("root").innerHTML =
-          '<div style="padding:16px;font-family:system-ui;">' +
-          '<h2 style="font-size:20px;font-weight:700;">App crashed before rendering</h2>' +
-          '<pre style="white-space:pre-wrap;background:#f7f7f7;border:1px solid #ddd;padding:12px;border-radius:8px;">' +
-          msg +
-          "</pre></div>";
-      }
+      // Mount
+      const root = ReactDOM.createRoot(document.getElementById("root"));
+      root.render(<App />);
     </script>
   </body>
 </html>
