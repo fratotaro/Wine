@@ -22,7 +22,7 @@
     <script type="text/babel">
       const { useEffect, useMemo, useState } = React;
 
-      // --- Tiny icon helpers (so we don't need lucide-react) ---
+      // --- Lightweight icon replacements (no lucide-react in plain HTML) ---
       const IconWine = ({ className = "", size = 32 }) => (
         <span className={className} style={{ fontSize: size, lineHeight: 1 }}>
           🍷
@@ -94,39 +94,67 @@
         const [wineNumber, setWineNumber] = useState("");
         const [currentScore, setCurrentScore] = useState("");
         const [allVotes, setAllVotes] = useState([]);
+        const [excludedUsers, setExcludedUsers] = useState(new Set());
         const [showAdmin, setShowAdmin] = useState(false);
         const [adminPassword, setAdminPassword] = useState("");
         const ADMIN_PASSWORD = "winetasting2025";
 
-        // --- Persist votes to localStorage (so admin totals survive refresh) ---
+        // --- Persist allVotes + excludedUsers (so admin settings survive refresh) ---
         useEffect(() => {
           try {
-            const stored = localStorage.getItem("wine_tasting_allVotes");
-            if (stored) setAllVotes(JSON.parse(stored));
+            const storedVotes = localStorage.getItem("wine_tasting_allVotes_v2");
+            if (storedVotes) setAllVotes(JSON.parse(storedVotes));
+
+            const storedExcluded = localStorage.getItem("wine_tasting_excludedUsers_v2");
+            if (storedExcluded) setExcludedUsers(new Set(JSON.parse(storedExcluded)));
           } catch (e) {}
         }, []);
 
         useEffect(() => {
           try {
-            localStorage.setItem("wine_tasting_allVotes", JSON.stringify(allVotes));
+            localStorage.setItem("wine_tasting_allVotes_v2", JSON.stringify(allVotes));
           } catch (e) {}
         }, [allVotes]);
 
+        useEffect(() => {
+          try {
+            localStorage.setItem(
+              "wine_tasting_excludedUsers_v2",
+              JSON.stringify(Array.from(excludedUsers))
+            );
+          } catch (e) {}
+        }, [excludedUsers]);
+
         const handleLogin = () => {
           if (firstName.trim() !== "" && lastName.trim() !== "") {
+            const userName = `${firstName.trim()} ${lastName.trim()}`;
+
+            // Check if user has voted before -> load their last saved scores
+            const existingUser = allVotes.find((vote) => vote.name === userName);
+            if (existingUser) {
+              setScores(existingUser.scores || {});
+            } else {
+              setScores({});
+            }
+
             setIsLoggedIn(true);
           }
         };
 
         const handleLogout = () => {
-          // Save votes before logging out
+          // Save votes before logging out (overwrite existing vote for this user)
           if (Object.keys(scores).length > 0) {
+            const userName = `${firstName} ${lastName}`;
             const userVote = {
-              name: `${firstName} ${lastName}`,
+              name: userName,
               scores: { ...scores },
               timestamp: new Date().toISOString(),
             };
-            setAllVotes((prev) => [...prev, userVote]);
+
+            setAllVotes((prev) => {
+              const filtered = prev.filter((vote) => vote.name !== userName);
+              return [...filtered, userVote];
+            });
           }
 
           setIsLoggedIn(false);
@@ -193,7 +221,10 @@
           const allFrenchScores = [];
 
           allVotes.forEach((vote) => {
-            Object.entries(vote.scores).forEach(([wineNum, score]) => {
+            // Skip excluded users
+            if (excludedUsers.has(vote.name)) return;
+
+            Object.entries(vote.scores || {}).forEach(([wineNum, score]) => {
               const num = parseInt(wineNum, 10);
               if (num % 2 === 0) allItalianScores.push(score);
               else allFrenchScores.push(score);
@@ -216,8 +247,17 @@
           };
         };
 
+        const toggleUserExclusion = (userName) => {
+          setExcludedUsers((prev) => {
+            const newSet = new Set(prev);
+            if (newSet.has(userName)) newSet.delete(userName);
+            else newSet.add(userName);
+            return newSet;
+          });
+        };
+
         const results = useMemo(() => calculateResults(), [scores]);
-        const globalResults = useMemo(() => calculateGlobalResults(), [allVotes]);
+        const globalResults = useMemo(() => calculateGlobalResults(), [allVotes, excludedUsers]);
 
         const wineNum = parseInt(wineNumber || "0", 10);
         const isItalian = wineNum > 0 && wineNum % 2 === 0;
@@ -240,7 +280,7 @@
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent mb-4"
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
-                        // just re-render; password check happens above
+                        // password check happens by re-render
                       }
                     }}
                   />
@@ -254,6 +294,8 @@
               </div>
             );
           }
+
+          const includedCount = allVotes.filter((v) => !excludedUsers.has(v.name)).length;
 
           return (
             <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-4">
@@ -302,11 +344,9 @@
                   {globalResults.italian.avg !== "N/A" && globalResults.french.avg !== "N/A" && (
                     <div className="p-4 bg-purple-50 rounded-lg border-2 border-purple-300 text-center">
                       <p className="text-lg font-bold text-purple-800">
-                        {parseFloat(globalResults.italian.avg) >
-                        parseFloat(globalResults.french.avg)
+                        {parseFloat(globalResults.italian.avg) > parseFloat(globalResults.french.avg)
                           ? "🇮🇹 Italian wines are winning!"
-                          : parseFloat(globalResults.french.avg) >
-                            parseFloat(globalResults.italian.avg)
+                          : parseFloat(globalResults.french.avg) > parseFloat(globalResults.italian.avg)
                           ? "🇫🇷 French wines are winning!"
                           : "🤝 It's a tie!"}
                       </p>
@@ -317,7 +357,7 @@
                 {/* Individual Participants */}
                 <div className="bg-white rounded-lg shadow-lg p-6">
                   <h2 className="text-xl font-bold text-gray-800 mb-4">
-                    Individual Participants ({allVotes.length})
+                    Individual Participants ({includedCount} included / {allVotes.length} total)
                   </h2>
 
                   {allVotes.length === 0 ? (
@@ -325,12 +365,14 @@
                   ) : (
                     <div className="space-y-4">
                       {allVotes.map((vote, index) => {
+                        const isExcluded = excludedUsers.has(vote.name);
+
                         const userResults = {
                           italian: { scores: [], avg: "N/A" },
                           french: { scores: [], avg: "N/A" },
                         };
 
-                        Object.entries(vote.scores).forEach(([wineNum, score]) => {
+                        Object.entries(vote.scores || {}).forEach(([wineNum, score]) => {
                           if (parseInt(wineNum, 10) % 2 === 0) userResults.italian.scores.push(score);
                           else userResults.french.scores.push(score);
                         });
@@ -341,6 +383,7 @@
                             userResults.italian.scores.length
                           ).toFixed(2);
                         }
+
                         if (userResults.french.scores.length > 0) {
                           userResults.french.avg = (
                             userResults.french.scores.reduce((a, b) => a + b, 0) /
@@ -349,11 +392,38 @@
                         }
 
                         return (
-                          <div key={index} className="border-2 border-gray-200 rounded-lg p-4">
+                          <div
+                            key={index}
+                            className={`border-2 rounded-lg p-4 ${
+                              isExcluded
+                                ? "border-gray-300 bg-gray-50 opacity-60"
+                                : "border-gray-200 bg-white"
+                            }`}
+                          >
                             <div className="flex items-center justify-between mb-3">
-                              <h3 className="font-bold text-lg text-gray-800">{vote.name}</h3>
+                              <div className="flex items-center gap-3">
+                                <button
+                                  onClick={() => toggleUserExclusion(vote.name)}
+                                  className={`w-6 h-6 rounded border-2 flex items-center justify-center transition ${
+                                    isExcluded
+                                      ? "bg-gray-300 border-gray-400"
+                                      : "bg-green-500 border-green-600"
+                                  }`}
+                                  title={isExcluded ? "Click to include" : "Click to exclude"}
+                                >
+                                  {!isExcluded && <span className="text-white text-sm">✓</span>}
+                                </button>
+
+                                <h3 className="font-bold text-lg text-gray-800">
+                                  {vote.name}
+                                  {isExcluded && (
+                                    <span className="ml-2 text-sm text-red-600">(Excluded)</span>
+                                  )}
+                                </h3>
+                              </div>
+
                               <span className="text-sm text-gray-500">
-                                {Object.keys(vote.scores).length} wines rated
+                                {Object.keys(vote.scores || {}).length} wines rated
                               </span>
                             </div>
 
@@ -367,6 +437,7 @@
                                   {userResults.italian.scores.length} wines
                                 </p>
                               </div>
+
                               <div className="p-3 bg-blue-50 rounded border border-blue-200">
                                 <p className="text-sm font-medium text-blue-800">🇫🇷 French Avg</p>
                                 <p className="text-xl font-bold text-blue-600">
@@ -383,7 +454,7 @@
                                 View individual scores
                               </summary>
                               <div className="mt-2 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
-                                {Object.entries(vote.scores)
+                                {Object.entries(vote.scores || {})
                                   .sort(([a], [b]) => parseInt(a, 10) - parseInt(b, 10))
                                   .map(([wineNum, score]) => (
                                     <div
@@ -406,37 +477,44 @@
                     </div>
                   )}
 
-                  {/* Optional admin controls */}
+                  {/* Admin controls */}
                   <div className="mt-6 pt-6 border-t flex flex-col sm:flex-row gap-3">
                     <button
                       onClick={() => {
-                        if (confirm("Clear ALL stored votes? This cannot be undone.")) {
+                        if (confirm("Clear ALL stored votes and exclusions? This cannot be undone.")) {
                           setAllVotes([]);
+                          setExcludedUsers(new Set());
                           try {
-                            localStorage.removeItem("wine_tasting_allVotes");
+                            localStorage.removeItem("wine_tasting_allVotes_v2");
+                            localStorage.removeItem("wine_tasting_excludedUsers_v2");
                           } catch (e) {}
                         }
                       }}
                       className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium"
                     >
-                      Clear All Votes
+                      Clear All Data
                     </button>
+
                     <button
                       onClick={() => {
-                        // Download votes as JSON (simple approach)
-                        const blob = new Blob([JSON.stringify(allVotes, null, 2)], {
+                        const payload = {
+                          allVotes,
+                          excludedUsers: Array.from(excludedUsers),
+                          exportedAt: new Date().toISOString(),
+                        };
+                        const blob = new Blob([JSON.stringify(payload, null, 2)], {
                           type: "application/json",
                         });
                         const url = URL.createObjectURL(blob);
                         const a = document.createElement("a");
                         a.href = url;
-                        a.download = "wine-tasting-votes.json";
+                        a.download = "wine-tasting-admin-export.json";
                         a.click();
                         URL.revokeObjectURL(url);
                       }}
                       className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium"
                     >
-                      Export Votes (JSON)
+                      Export Data (JSON)
                     </button>
                   </div>
                 </div>
@@ -455,6 +533,7 @@
                   <h1 className="text-3xl font-bold text-gray-800">Wine Tasting</h1>
                   <IconWine className="text-blue-600" size={40} />
                 </div>
+
                 <p className="text-center text-gray-600 mb-8">Italy 🇮🇹 vs France 🇫🇷</p>
 
                 <div className="space-y-4 mb-6">
@@ -470,6 +549,7 @@
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                     />
                   </div>
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Last Name <span className="text-red-500">*</span>
@@ -606,8 +686,8 @@
 
                         {scores[wineNum] && (
                           <p className="mt-2 text-center text-sm text-orange-600 font-medium">
-                            ⚠️ You already scored this wine with {scores[wineNum]}/10. You can edit it
-                            in "Review My Scores".
+                            ⚠️ You already scored this wine with {scores[wineNum]}/10. Submitting will
+                            update your score.
                           </p>
                         )}
                       </div>
@@ -678,9 +758,7 @@
                               <div
                                 key={wineNum}
                                 className={`p-4 rounded-lg border-2 ${
-                                  italian
-                                    ? "bg-red-50 border-red-300"
-                                    : "bg-blue-50 border-blue-300"
+                                  italian ? "bg-red-50 border-red-300" : "bg-blue-50 border-blue-300"
                                 }`}
                               >
                                 <div className="flex items-center justify-between">
@@ -688,7 +766,9 @@
                                     <span className="text-3xl">{italian ? "🇮🇹" : "🇫🇷"}</span>
                                     <div>
                                       <p className="font-bold text-lg">Wine #{wineNum}</p>
-                                      <p className="text-sm text-gray-600">{italian ? "Italian" : "French"}</p>
+                                      <p className="text-sm text-gray-600">
+                                        {italian ? "Italian" : "French"}
+                                      </p>
                                     </div>
                                   </div>
 
