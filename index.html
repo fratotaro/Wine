@@ -1,0 +1,570 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wine Tasting Contest — Italy vs France</title>
+
+  <!-- Tailwind CDN (good enough for this kind of single-file app) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Lucide icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+
+<body class="min-h-screen bg-gradient-to-br from-red-50 via-white to-blue-50">
+  <div id="app" class="min-h-screen"></div>
+
+  <script>
+    // ---------- Simple state ----------
+    const state = {
+      firstName: "",
+      lastName: "",
+      isLoggedIn: false,
+      scores: {},            // { [wineNumber]: score }
+      currentTab: "score",   // "score" | "review"
+      wineNumber: "",
+      currentScore: ""
+    };
+
+    // ---------- Persistence ----------
+    const STORAGE_SCORES_KEY = "wineScores";
+    const STORAGE_USER_KEY = "wineUser";
+
+    function loadFromStorage() {
+      try {
+        const savedScores = localStorage.getItem(STORAGE_SCORES_KEY);
+        const savedUser = localStorage.getItem(STORAGE_USER_KEY);
+
+        if (savedScores) state.scores = JSON.parse(savedScores) || {};
+        if (savedUser) {
+          const u = JSON.parse(savedUser) || {};
+          state.firstName = u.firstName || "";
+          state.lastName = u.lastName || "";
+          state.isLoggedIn = !!(state.firstName.trim() && state.lastName.trim());
+        }
+      } catch (_) {
+        // ignore
+      }
+    }
+
+    function saveScores() {
+      try { localStorage.setItem(STORAGE_SCORES_KEY, JSON.stringify(state.scores)); } catch (_) {}
+    }
+    function saveUser() {
+      try { localStorage.setItem(STORAGE_USER_KEY, JSON.stringify({ firstName: state.firstName, lastName: state.lastName })); } catch (_) {}
+    }
+    function clearStorage() {
+      try {
+        localStorage.removeItem(STORAGE_SCORES_KEY);
+        localStorage.removeItem(STORAGE_USER_KEY);
+      } catch (_) {}
+    }
+
+    // ---------- Helpers ----------
+    function esc(s) {
+      return String(s).replace(/[&<>"']/g, (c) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"
+      })[c]);
+    }
+
+    function parseIntSafe(v) {
+      const n = parseInt(v, 10);
+      return Number.isFinite(n) ? n : NaN;
+    }
+
+    function calcResults(scores) {
+      const italian = [];
+      const french = [];
+
+      Object.entries(scores).forEach(([wineNum, score]) => {
+        const n = parseIntSafe(wineNum);
+        if (!Number.isFinite(n)) return;
+        if (n % 2 === 0) italian.push(score);
+        else french.push(score);
+      });
+
+      const avg = (arr) => arr.length ? (arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(2) : "N/A";
+
+      return {
+        italian: { avg: avg(italian), count: italian.length },
+        french: { avg: avg(french), count: french.length }
+      };
+    }
+
+    function preventNonIntegerKeys(e) {
+      if ([".", "-", "+", "e", "E"].includes(e.key)) e.preventDefault();
+    }
+
+    // ---------- Actions ----------
+    function login() {
+      if (state.firstName.trim() && state.lastName.trim()) {
+        state.isLoggedIn = true;
+        saveUser();
+        render();
+      }
+    }
+
+    function logout() {
+      state.isLoggedIn = false;
+      state.firstName = "";
+      state.lastName = "";
+      state.scores = {};
+      state.wineNumber = "";
+      state.currentScore = "";
+      state.currentTab = "score";
+      clearStorage();
+      render();
+    }
+
+    function submitScore() {
+      const wineNum = parseIntSafe(state.wineNumber);
+      const score = parseIntSafe(state.currentScore);
+
+      if (!(wineNum > 0)) return;
+      if (!(score >= 1 && score <= 10)) return;
+
+      // Block overwriting via submit (edit on Review tab instead)
+      if (state.scores[wineNum]) return;
+
+      state.scores[wineNum] = score;
+      saveScores();
+
+      state.wineNumber = "";
+      state.currentScore = "";
+      render();
+    }
+
+    function updateScore(wineNum, newScore) {
+      const n = parseIntSafe(newScore);
+      if (n >= 1 && n <= 10) {
+        state.scores[wineNum] = n;
+        saveScores();
+        render(); // OK for small lists; simple.
+      }
+    }
+
+    function deleteScore(wineNum) {
+      delete state.scores[wineNum];
+      saveScores();
+      render();
+    }
+
+    function setTab(tab) {
+      state.currentTab = tab;
+      render();
+    }
+
+    // ---------- Rendering ----------
+    const app = document.getElementById("app");
+
+    function render() {
+      // Re-init lucide after HTML changes
+      const html = state.isLoggedIn ? renderMain() : renderLogin();
+      app.innerHTML = html;
+
+      // Bind events after injection
+      bindEvents();
+
+      // Render icons
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    function renderLogin() {
+      return `
+        <div class="min-h-screen flex items-center justify-center p-4">
+          <div class="bg-white rounded-lg shadow-xl p-8 max-w-md w-full">
+            <div class="flex items-center justify-center gap-3 mb-6">
+              <i data-lucide="wine" class="text-red-600" style="width:40px;height:40px;"></i>
+              <h1 class="text-3xl font-bold text-gray-800">Wine Tasting</h1>
+              <i data-lucide="wine" class="text-blue-600" style="width:40px;height:40px;"></i>
+            </div>
+            <p class="text-center text-gray-600 mb-8">Italy 🇮🇹 vs France 🇫🇷</p>
+
+            <div class="space-y-4 mb-6">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                  First Name <span class="text-red-500">*</span>
+                </label>
+                <input
+                  id="firstName"
+                  type="text"
+                  value="${esc(state.firstName)}"
+                  placeholder="Enter your first name"
+                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                  Last Name <span class="text-red-500">*</span>
+                </label>
+                <input
+                  id="lastName"
+                  type="text"
+                  value="${esc(state.lastName)}"
+                  placeholder="Enter your last name"
+                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                />
+              </div>
+            </div>
+
+            <button
+              id="loginBtn"
+              class="w-full py-3 rounded-lg font-bold text-lg transition ${
+                state.firstName.trim() && state.lastName.trim()
+                  ? "bg-purple-600 hover:bg-purple-700 text-white"
+                  : "bg-gray-300 text-gray-500 cursor-not-allowed"
+              }"
+              ${state.firstName.trim() && state.lastName.trim() ? "" : "disabled"}
+            >
+              Start Tasting
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderMain() {
+      const results = calcResults(state.scores);
+      const scoredCount = Object.keys(state.scores).length;
+
+      return `
+        <div class="min-h-screen p-4">
+          <div class="max-w-4xl mx-auto">
+
+            <!-- Header -->
+            <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
+              <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-3">
+                  <i data-lucide="wine" class="text-red-600" style="width:32px;height:32px;"></i>
+                  <div>
+                    <h1 class="text-2xl font-bold text-gray-800">Wine Tasting Contest</h1>
+                    <p class="text-sm text-gray-600">Italy 🇮🇹 vs France 🇫🇷</p>
+                  </div>
+                </div>
+                <button
+                  id="logoutBtn"
+                  class="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
+                >
+                  <i data-lucide="log-out" style="width:20px;height:20px;"></i>
+                  <span class="text-sm font-medium">Logout</span>
+                </button>
+              </div>
+
+              <div class="flex items-center gap-2 p-3 bg-purple-50 rounded-lg border border-purple-200">
+                <i data-lucide="user" class="text-purple-600" style="width:20px;height:20px;"></i>
+                <span class="font-semibold text-gray-800">${esc(state.firstName)} ${esc(state.lastName)}</span>
+              </div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="bg-white rounded-lg shadow-lg mb-6">
+              <div class="flex border-b">
+                <button
+                  id="tabScore"
+                  class="flex-1 py-4 font-semibold transition ${
+                    state.currentTab === "score"
+                      ? "bg-purple-600 text-white"
+                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  } rounded-tl-lg"
+                >
+                  Score a Wine
+                </button>
+                <button
+                  id="tabReview"
+                  class="flex-1 py-4 font-semibold transition ${
+                    state.currentTab === "review"
+                      ? "bg-purple-600 text-white"
+                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  } rounded-tr-lg"
+                >
+                  Review My Scores (${scoredCount})
+                </button>
+              </div>
+
+              ${state.currentTab === "score" ? renderScoreTab() : renderReviewTab(results)}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderScoreTab() {
+      const wineNum = parseIntSafe(state.wineNumber);
+      const isItalian = wineNum > 0 && wineNum % 2 === 0;
+      const isFrench = wineNum > 0 && wineNum % 2 === 1;
+      const alreadyScored = wineNum > 0 && state.scores[wineNum] != null;
+
+      const canSubmit =
+        state.wineNumber &&
+        wineNum > 0 &&
+        state.currentScore &&
+        parseIntSafe(state.currentScore) >= 1 &&
+        parseIntSafe(state.currentScore) <= 10 &&
+        !alreadyScored;
+
+      return `
+        <div class="p-6">
+          <h2 class="text-xl font-bold text-gray-800 mb-6">Score a Wine</h2>
+
+          <div class="space-y-6">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Wine Number</label>
+              <div class="relative">
+                <input
+                  id="wineNumber"
+                  type="number"
+                  min="1"
+                  value="${esc(state.wineNumber)}"
+                  placeholder="Enter wine number"
+                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-center text-2xl font-bold"
+                />
+                ${wineNum > 0 ? `
+                  <div class="absolute right-4 top-1/2 -translate-y-1/2 text-4xl">
+                    ${isItalian ? "🇮🇹" : isFrench ? "🇫🇷" : ""}
+                  </div>
+                ` : ""}
+              </div>
+
+              ${wineNum > 0 ? `
+                <p class="mt-2 text-center text-sm font-medium">
+                  ${isItalian ? `<span class="text-red-600">Italian Wine (Even Number)</span>` : ""}
+                  ${isFrench ? `<span class="text-blue-600">French Wine (Odd Number)</span>` : ""}
+                </p>
+              ` : ""}
+
+              ${alreadyScored ? `
+                <p class="mt-2 text-center text-sm text-orange-600 font-medium">
+                  ⚠️ You already scored this wine with ${state.scores[wineNum]}/10. Edit it in "Review My Scores".
+                </p>
+              ` : ""}
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Score (1-10)</label>
+              <input
+                id="currentScore"
+                type="number"
+                min="1"
+                max="10"
+                step="1"
+                value="${esc(state.currentScore)}"
+                placeholder="Enter score 1-10"
+                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-center text-2xl font-bold"
+              />
+            </div>
+
+            <button
+              id="submitScoreBtn"
+              class="w-full py-4 rounded-lg font-bold text-lg transition ${
+                canSubmit
+                  ? "bg-purple-600 hover:bg-purple-700 text-white"
+                  : "bg-gray-300 text-gray-500 cursor-not-allowed"
+              }"
+              ${canSubmit ? "" : "disabled"}
+            >
+              Submit Score
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderReviewTab(results) {
+      const entries = Object.entries(state.scores)
+        .sort(([a], [b]) => parseIntSafe(a) - parseIntSafe(b));
+
+      const hasScores = entries.length > 0;
+
+      const rows = entries.map(([wineNum, score]) => {
+        const n = parseIntSafe(wineNum);
+        const italian = n % 2 === 0;
+        return `
+          <div class="p-4 rounded-lg border-2 ${italian ? "bg-red-50 border-red-300" : "bg-blue-50 border-blue-300"}">
+            <div class="flex items-center justify-between gap-4 flex-wrap">
+              <div class="flex items-center gap-3 min-w-[180px]">
+                <span class="text-3xl">${italian ? "🇮🇹" : "🇫🇷"}</span>
+                <div>
+                  <p class="font-bold text-lg">Wine #${esc(wineNum)}</p>
+                  <p class="text-sm text-gray-600">${italian ? "Italian" : "French"}</p>
+                </div>
+              </div>
+
+              <div class="flex items-center gap-3">
+                <input
+                  data-score-input="${esc(wineNum)}"
+                  type="number"
+                  min="1"
+                  max="10"
+                  step="1"
+                  value="${esc(score)}"
+                  class="w-20 px-3 py-2 border border-gray-300 rounded-lg text-center text-xl font-bold focus:ring-2 focus:ring-purple-500"
+                />
+                <button
+                  data-delete-btn="${esc(wineNum)}"
+                  class="px-3 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium transition"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join("");
+
+      const bothHaveAvg = results.italian.avg !== "N/A" && results.french.avg !== "N/A";
+      let verdict = "";
+      if (bothHaveAvg) {
+        const ia = parseFloat(results.italian.avg);
+        const fa = parseFloat(results.french.avg);
+        verdict = ia > fa ? "🇮🇹 You preferred Italian wines!"
+               : fa > ia ? "🇫🇷 You preferred French wines!"
+               : "🤝 It's a tie!";
+      }
+
+      return `
+        <div class="p-6">
+          <h2 class="text-xl font-bold text-gray-800 mb-4">My Scores</h2>
+
+          ${!hasScores ? `
+            <div class="text-center py-8">
+              <p class="text-gray-600">No wines scored yet</p>
+              <p class="text-sm text-gray-500 mt-2">Go to "Score a Wine" to start tasting!</p>
+            </div>
+          ` : `
+            <div class="space-y-3">
+              ${rows}
+            </div>
+          `}
+
+          ${hasScores ? `
+            <div class="mt-6 pt-6 border-t">
+              <div class="flex items-center gap-2 mb-4">
+                <i data-lucide="bar-chart-3" class="text-purple-600" style="width:24px;height:24px;"></i>
+                <h3 class="text-lg font-bold text-gray-800">Your Summary</h3>
+              </div>
+
+              <div class="grid md:grid-cols-2 gap-4">
+                <div class="p-4 bg-red-50 rounded-lg border-2 border-red-300">
+                  <h4 class="font-bold text-red-800 mb-1">🇮🇹 Italian Wines</h4>
+                  <p class="text-2xl font-bold text-red-600">${esc(results.italian.avg)}</p>
+                  <p class="text-sm text-gray-600">${esc(results.italian.count)} wines rated</p>
+                </div>
+                <div class="p-4 bg-blue-50 rounded-lg border-2 border-blue-300">
+                  <h4 class="font-bold text-blue-800 mb-1">🇫🇷 French Wines</h4>
+                  <p class="text-2xl font-bold text-blue-600">${esc(results.french.avg)}</p>
+                  <p class="text-sm text-gray-600">${esc(results.french.count)} wines rated</p>
+                </div>
+              </div>
+
+              ${bothHaveAvg ? `
+                <div class="mt-4 p-3 bg-purple-50 rounded-lg border-2 border-purple-300 text-center">
+                  <p class="font-bold text-purple-800">${esc(verdict)}</p>
+                </div>
+              ` : ""}
+            </div>
+          ` : ""}
+        </div>
+      `;
+    }
+
+    function bindEvents() {
+      if (!state.isLoggedIn) {
+        const firstNameEl = document.getElementById("firstName");
+        const lastNameEl = document.getElementById("lastName");
+        const loginBtn = document.getElementById("loginBtn");
+
+        if (firstNameEl) {
+          firstNameEl.addEventListener("input", (e) => {
+            state.firstName = e.target.value;
+            saveUser();
+            render();
+          });
+          firstNameEl.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") login();
+          });
+        }
+
+        if (lastNameEl) {
+          lastNameEl.addEventListener("input", (e) => {
+            state.lastName = e.target.value;
+            saveUser();
+            render();
+          });
+          lastNameEl.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") login();
+          });
+        }
+
+        if (loginBtn) loginBtn.addEventListener("click", login);
+        return;
+      }
+
+      // Logged in bindings
+      const logoutBtn = document.getElementById("logoutBtn");
+      if (logoutBtn) logoutBtn.addEventListener("click", logout);
+
+      const tabScore = document.getElementById("tabScore");
+      const tabReview = document.getElementById("tabReview");
+      if (tabScore) tabScore.addEventListener("click", () => setTab("score"));
+      if (tabReview) tabReview.addEventListener("click", () => setTab("review"));
+
+      if (state.currentTab === "score") {
+        const wineEl = document.getElementById("wineNumber");
+        const scoreEl = document.getElementById("currentScore");
+        const submitBtn = document.getElementById("submitScoreBtn");
+
+        if (wineEl) {
+          wineEl.addEventListener("input", (e) => {
+            state.wineNumber = e.target.value;
+            render();
+          });
+          wineEl.addEventListener("keydown", (e) => {
+            preventNonIntegerKeys(e);
+            if (e.key === "Enter") submitScore();
+          });
+        }
+
+        if (scoreEl) {
+          scoreEl.addEventListener("input", (e) => {
+            state.currentScore = e.target.value;
+            render();
+          });
+          scoreEl.addEventListener("keydown", (e) => {
+            preventNonIntegerKeys(e);
+            if (e.key === "Enter") submitScore();
+          });
+        }
+
+        if (submitBtn) submitBtn.addEventListener("click", submitScore);
+      }
+
+      if (state.currentTab === "review") {
+        // Score inputs
+        document.querySelectorAll("[data-score-input]").forEach((input) => {
+          input.addEventListener("keydown", preventNonIntegerKeys);
+          input.addEventListener("input", (e) => {
+            const wineNum = e.target.getAttribute("data-score-input");
+            const val = e.target.value;
+            if (val === "") return; // allow clearing without immediate snapback
+            const n = parseIntSafe(val);
+            if (n >= 1 && n <= 10) updateScore(wineNum, n);
+          });
+        });
+
+        // Delete buttons
+        document.querySelectorAll("[data-delete-btn]").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const wineNum = btn.getAttribute("data-delete-btn");
+            deleteScore(wineNum);
+          });
+        });
+      }
+    }
+
+    // ---------- Boot ----------
+    loadFromStorage();
+    render();
+  </script>
+</body>
+</html>
